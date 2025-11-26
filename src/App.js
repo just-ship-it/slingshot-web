@@ -39,7 +39,7 @@ function App() {
   }, []);
 
   // WebSocket connection for real-time updates
-  const socket = useWebSocket('http://localhost:3001', {
+  const socket = useWebSocket(process.env.REACT_APP_API_URL || 'http://localhost:3014', {
     onConnect: handleConnect,
     onDisconnect: handleDisconnect,
     onWebhookReceived: handleWebhookReceived,
@@ -60,11 +60,26 @@ function App() {
 
       // Try to load accounts, but don't block the entire app if it fails
       const accountsResponse = await api.getAccounts();
-      setAccounts(accountsResponse.accounts || []);
+      const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
+      setAccounts(accounts);
 
-      // Select first account by default
-      if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-        setSelectedAccount(accountsResponse.accounts[0]);
+      // Select default account (761526) or first available account
+      if (accounts.length > 0) {
+        // Try to find the default account (761526) - compare as strings
+        const defaultAccount = accounts.find(account =>
+          account.id === '761526' || account.id === 761526 ||
+          String(account.id) === '761526'
+        );
+        console.log('🔍 Looking for account 761526 in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
+        console.log('🎯 Found default account:', defaultAccount);
+        if (defaultAccount) {
+          setSelectedAccount(defaultAccount);
+          console.log('✅ Selected default account:', defaultAccount.id, defaultAccount.name);
+        } else {
+          // Fallback to first account if default not found
+          setSelectedAccount(accounts[0]);
+          console.log('⚠️ Default account not found, using first account:', accounts[0].id, accounts[0].name);
+        }
       }
 
     } catch (err) {
@@ -193,7 +208,19 @@ function App() {
             onAccountsLoaded={(loadedAccounts) => {
               setAccounts(loadedAccounts);
               if (loadedAccounts.length > 0 && !selectedAccount) {
-                setSelectedAccount(loadedAccounts[0]);
+                // Try to find the default account (761526) - compare as strings
+                const defaultAccount = loadedAccounts.find(account =>
+                  account.id === '761526' || account.id === 761526 ||
+                  String(account.id) === '761526'
+                );
+                if (defaultAccount) {
+                  setSelectedAccount(defaultAccount);
+                  console.log('✅ Dashboard loaded default account:', defaultAccount.id, defaultAccount.name);
+                } else {
+                  // Fallback to first account if default not found
+                  setSelectedAccount(loadedAccounts[0]);
+                  console.log('⚠️ Dashboard: Default account not found, using first account:', loadedAccounts[0].id, loadedAccounts[0].name);
+                }
               }
             }}
           />

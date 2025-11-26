@@ -24,6 +24,10 @@ const TestTrading = () => {
     account: ''
   });
 
+  // Custom symbol state
+  const [useCustomSymbol, setUseCustomSymbol] = useState(false);
+  const [customSymbol, setCustomSymbol] = useState('');
+
   // Points mode state
   const [usePointsMode, setUsePointsMode] = useState(true);
   const [pointsConfig, setPointsConfig] = useState({
@@ -50,12 +54,15 @@ const TestTrading = () => {
     setError(null);
     try {
       const response = await api.getAccounts();
-      if (response.accounts && response.accounts.length > 0) {
-        setAccounts(response.accounts);
-        setSelectedAccount(response.accounts[0]);
-        setTestSignal(prev => ({ ...prev, account: response.accounts[0].id }));
+      // The monitoring service returns accounts directly as an array
+      const accountsArray = Array.isArray(response) ? response : response.accounts || [];
+
+      if (accountsArray.length > 0) {
+        setAccounts(accountsArray);
+        setSelectedAccount(accountsArray[0]);
+        setTestSignal(prev => ({ ...prev, account: accountsArray[0].id }));
       } else {
-        setError('No trading accounts found');
+        setError('No trading accounts found - make sure the tradovate-service is running and connected');
       }
     } catch (error) {
       setError(`Failed to load accounts: ${error.message}`);
@@ -67,12 +74,33 @@ const TestTrading = () => {
   const handleInputChange = (field, value) => {
     setTestSignal(prev => ({ ...prev, [field]: value }));
 
+    // Handle symbol dropdown change
+    if (field === 'symbol') {
+      if (value === 'custom') {
+        setUseCustomSymbol(true);
+        setTestSignal(prev => ({ ...prev, symbol: customSymbol }));
+      } else {
+        setUseCustomSymbol(false);
+        setCustomSymbol('');
+      }
+    }
+
     // If price or side changed and we're in points mode, recalculate stop/target
     if ((field === 'price' || field === 'side' || field === 'symbol') && usePointsMode) {
       const newSide = field === 'side' ? value : testSignal.side;
       const newPrice = field === 'price' ? value : testSignal.price;
-      const newSymbol = field === 'symbol' ? value : testSignal.symbol;
+      const newSymbol = field === 'symbol' ? (value === 'custom' ? customSymbol : value) : testSignal.symbol;
       calculateStopAndTarget(newPrice, newSide, newSymbol, pointsConfig.stopPoints, pointsConfig.targetPoints);
+    }
+  };
+
+  const handleCustomSymbolChange = (value) => {
+    setCustomSymbol(value);
+    setTestSignal(prev => ({ ...prev, symbol: value }));
+
+    // Recalculate if in points mode
+    if (usePointsMode) {
+      calculateStopAndTarget(testSignal.price, testSignal.side, value, pointsConfig.stopPoints, pointsConfig.targetPoints);
     }
   };
 
@@ -131,13 +159,24 @@ const TestTrading = () => {
 
     try {
       const signalData = {
-        ...testSignal,
+        webhook_type: "trading_signal", // Route through trade-orchestrator for position sizing
+        action: testSignal.action,
+        side: testSignal.side,
+        symbol: testSignal.symbol,
+        price: testSignal.price,
+        stop_loss: testSignal.stop_loss,
+        take_profit: testSignal.take_profit,
+        trailing_trigger: testSignal.trailing_trigger,
+        trailing_offset: testSignal.trailing_offset,
+        quantity: testSignal.quantity,
+        strategy: testSignal.strategy,
         account: selectedAccount.id,
         timestamp: new Date().toISOString(),
         source: 'test-interface'
       };
 
-      const response = await axios.post('http://localhost:3001/autotrader', signalData, {
+      const webhookGatewayUrl = process.env.REACT_APP_WEBHOOK_GATEWAY_URL || 'http://localhost:3010';
+      const response = await axios.post(`${webhookGatewayUrl}/webhook`, signalData, {
         headers: { 'Content-Type': 'application/json' }
       });
 
@@ -216,8 +255,9 @@ const TestTrading = () => {
             Test Signal Configuration
           </h2>
 
-          {/* Points Mode Toggle */}
-          <div className="mb-6 p-4 bg-gray-700 rounded-lg">
+          {/* Points Mode Toggle - Only show for place_limit */}
+          {testSignal.action === 'place_limit' && (
+            <div className="mb-6 p-4 bg-gray-700 rounded-lg">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-white">Risk/Reward Calculator</h3>
               <button
@@ -272,7 +312,8 @@ const TestTrading = () => {
                 💡 Switch to Points Mode to automatically calculate stop loss and take profit prices from your risk/reward points.
               </p>
             )}
-          </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Action */}
@@ -285,6 +326,7 @@ const TestTrading = () => {
               >
                 <option value="place_limit">Place Limit Order</option>
                 <option value="cancel_limit">Cancel Limit Orders</option>
+                <option value="position_closed">Close Position</option>
               </select>
             </div>
 
@@ -305,9 +347,9 @@ const TestTrading = () => {
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Symbol</label>
               <select
-                value={testSignal.symbol}
+                value={useCustomSymbol ? 'custom' : testSignal.symbol}
                 onChange={(e) => handleInputChange('symbol', e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
+                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded mb-2"
               >
                 <option value="MNQ">MNQ (Micro NASDAQ)</option>
                 <option value="NQ">NQ (NASDAQ)</option>
@@ -315,7 +357,17 @@ const TestTrading = () => {
                 <option value="ES">ES (S&P 500)</option>
                 <option value="RTY">RTY (Russell 2000)</option>
                 <option value="M2K">M2K (Micro Russell)</option>
+                <option value="custom">Other (Custom Symbol)</option>
               </select>
+              {useCustomSymbol && (
+                <input
+                  type="text"
+                  value={customSymbol}
+                  onChange={(e) => handleCustomSymbolChange(e.target.value)}
+                  placeholder="Enter custom symbol (e.g., MNQ!, NQ!, BTCUSD)"
+                  className="w-full bg-gray-600 border border-gray-500 text-white px-3 py-2 rounded text-sm"
+                />
+              )}
             </div>
 
             {/* Quantity */}
@@ -331,17 +383,19 @@ const TestTrading = () => {
               />
             </div>
 
-            {/* Price */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Price</label>
-              <input
-                type="number"
-                value={testSignal.price}
-                onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
-                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
-                step="0.25"
-              />
-            </div>
+            {/* Price - Hide for position_closed */}
+            {testSignal.action !== 'position_closed' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Price</label>
+                <input
+                  type="number"
+                  value={testSignal.price}
+                  onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                  className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
+                  step="0.25"
+                />
+              </div>
+            )}
 
             {/* Strategy */}
             <div>
@@ -355,77 +409,82 @@ const TestTrading = () => {
               />
             </div>
 
-            {/* Stop Loss */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Stop Loss {usePointsMode && <span className="text-green-400">(Auto-calculated)</span>}
-              </label>
-              <input
-                type="number"
-                value={testSignal.stop_loss}
-                onChange={(e) => handleInputChange('stop_loss', parseFloat(e.target.value) || 0)}
-                disabled={usePointsMode}
-                className={`w-full border text-white px-3 py-2 rounded ${
-                  usePointsMode
-                    ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed'
-                    : 'bg-gray-700 border-gray-600'
-                }`}
-                step="0.25"
-              />
-              {usePointsMode && (
-                <p className="text-xs text-green-400 mt-1">
-                  📉 {pointsConfig.stopPoints} points = {testSignal.stop_loss?.toFixed(2)}
-                </p>
-              )}
-            </div>
+            {/* Order-specific fields - Hide for position_closed and cancel_limit */}
+            {testSignal.action === 'place_limit' && (
+              <>
+                {/* Stop Loss */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Stop Loss {usePointsMode && <span className="text-green-400">(Auto-calculated)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={testSignal.stop_loss}
+                    onChange={(e) => handleInputChange('stop_loss', parseFloat(e.target.value) || 0)}
+                    disabled={usePointsMode}
+                    className={`w-full border text-white px-3 py-2 rounded ${
+                      usePointsMode
+                        ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-700 border-gray-600'
+                    }`}
+                    step="0.25"
+                  />
+                  {usePointsMode && (
+                    <p className="text-xs text-green-400 mt-1">
+                      📉 {pointsConfig.stopPoints} points = {testSignal.stop_loss?.toFixed(2)}
+                    </p>
+                  )}
+                </div>
 
-            {/* Take Profit */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Take Profit {usePointsMode && <span className="text-green-400">(Auto-calculated)</span>}
-              </label>
-              <input
-                type="number"
-                value={testSignal.take_profit}
-                onChange={(e) => handleInputChange('take_profit', parseFloat(e.target.value) || 0)}
-                disabled={usePointsMode}
-                className={`w-full border text-white px-3 py-2 rounded ${
-                  usePointsMode
-                    ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed'
-                    : 'bg-gray-700 border-gray-600'
-                }`}
-                step="0.25"
-              />
-              {usePointsMode && (
-                <p className="text-xs text-green-400 mt-1">
-                  📈 {pointsConfig.targetPoints} points = {testSignal.take_profit?.toFixed(2)}
-                </p>
-              )}
-            </div>
+                {/* Take Profit */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Take Profit {usePointsMode && <span className="text-green-400">(Auto-calculated)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={testSignal.take_profit}
+                    onChange={(e) => handleInputChange('take_profit', parseFloat(e.target.value) || 0)}
+                    disabled={usePointsMode}
+                    className={`w-full border text-white px-3 py-2 rounded ${
+                      usePointsMode
+                        ? 'bg-gray-600 border-gray-500 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-700 border-gray-600'
+                    }`}
+                    step="0.25"
+                  />
+                  {usePointsMode && (
+                    <p className="text-xs text-green-400 mt-1">
+                      📈 {pointsConfig.targetPoints} points = {testSignal.take_profit?.toFixed(2)}
+                    </p>
+                  )}
+                </div>
 
-            {/* Trailing Trigger */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Trailing Trigger (pts)</label>
-              <input
-                type="number"
-                value={testSignal.trailing_trigger}
-                onChange={(e) => handleInputChange('trailing_trigger', parseFloat(e.target.value) || 0)}
-                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
-                step="1"
-              />
-            </div>
+                {/* Trailing Trigger */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Trailing Trigger (pts)</label>
+                  <input
+                    type="number"
+                    value={testSignal.trailing_trigger}
+                    onChange={(e) => handleInputChange('trailing_trigger', parseFloat(e.target.value) || 0)}
+                    className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
+                    step="1"
+                  />
+                </div>
 
-            {/* Trailing Offset */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Trailing Offset (pts)</label>
-              <input
-                type="number"
-                value={testSignal.trailing_offset}
-                onChange={(e) => handleInputChange('trailing_offset', parseFloat(e.target.value) || 0)}
-                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
-                step="1"
-              />
-            </div>
+                {/* Trailing Offset */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Trailing Offset (pts)</label>
+                  <input
+                    type="number"
+                    value={testSignal.trailing_offset}
+                    onChange={(e) => handleInputChange('trailing_offset', parseFloat(e.target.value) || 0)}
+                    className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded"
+                    step="1"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Send Signal Button */}

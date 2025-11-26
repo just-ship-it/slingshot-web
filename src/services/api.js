@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Create axios instance with base configuration
-const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:3014';
 console.log('🌐 API Base URL:', baseURL);
 
 const apiClient = axios.create({
@@ -50,7 +50,7 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * API service for communicating with the Slingshot backend
+ * API service for communicating with the Slingshot monitoring service
  */
 export const api = {
   // Health check
@@ -58,156 +58,349 @@ export const api = {
     return await apiClient.get('/health');
   },
 
+  // Dashboard endpoint - comprehensive data
+  async getDashboard() {
+    return await apiClient.get('/api/dashboard');
+  },
+
   // Account endpoints
   async getAccounts() {
-    return await apiClient.get('/api/account/list');
+    const accounts = await apiClient.get('/api/accounts');
+    // Return in format expected by components: {accounts: [...]}
+    return { accounts: Array.isArray(accounts) ? accounts : [] };
   },
 
   async getAccount(accountId) {
-    return await apiClient.get(`/api/account/${accountId}`);
+    return await apiClient.get(`/api/accounts/${accountId}`);
   },
 
   async getAccountBalance(accountId) {
-    return await apiClient.get(`/api/account/${accountId}/balance`);
+    // Get account data which includes balance info
+    const account = await apiClient.get(`/api/accounts/${accountId}`);
+    return {
+      balance: account.balance,
+      realizedPnL: account.realizedPnL,
+      unrealizedPnL: account.unrealizedPnL,
+      marginUsed: account.marginUsed,
+      marginAvailable: account.marginAvailable
+    };
   },
 
   async getAccountSummary(accountId) {
-    return await apiClient.get(`/api/account/${accountId}/summary`);
+    return await apiClient.get(`/api/accounts/${accountId}`);
   },
 
   async getAllAccountsOverview() {
-    return await apiClient.get('/api/account/overview/all');
+    return await apiClient.get('/api/accounts');
   },
 
   // Trading endpoints
   async getAllPositions() {
-    return await apiClient.get('/api/trading/positions');
+    return await apiClient.get('/api/positions');
   },
 
   async getAllOrders() {
-    return await apiClient.get('/api/trading/orders');
+    const dashboard = await apiClient.get('/api/dashboard');
+    return dashboard.orders || [];
   },
 
   async getDailyPnL() {
-    return await apiClient.get('/api/trading/pnl');
+    const accounts = await apiClient.get('/api/accounts');
+    return accounts.reduce((total, account) => {
+      return total + (account.realizedPnL || 0) + (account.unrealizedPnL || 0);
+    }, 0);
   },
 
   async getTradingStats() {
-    return await apiClient.get('/api/trading/stats');
+    const dashboard = await apiClient.get('/api/dashboard');
+    const accounts = dashboard.accounts || [];
+    const positions = dashboard.positions || [];
+
+    return {
+      totalAccounts: accounts.length,
+      totalPositions: positions.length,
+      totalPnL: accounts.reduce((sum, acc) => sum + (acc.realizedPnL || 0) + (acc.unrealizedPnL || 0), 0),
+      totalBalance: accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0)
+    };
   },
 
   async getCriticalStatus() {
-    return await apiClient.get('/api/trading/critical-status');
+    try {
+      // Get clean trading data from trade-orchestrator
+      const tradingStatus = await this.getActiveTradingStatus();
+      const services = await apiClient.get('/api/services');
+
+      const downServices = services.filter(s => s.status !== 'running');
+
+      // Use trade-orchestrator's clean, filtered data
+      const openPositions = tradingStatus.positions || [];
+      const openOrders = [
+        ...(tradingStatus.pendingEntryOrders || []),
+        ...(tradingStatus.stopOrders || []),
+        ...(tradingStatus.targetOrders || [])
+      ];
+
+      return {
+        status: downServices.length === 0 ? 'healthy' : 'critical',
+        issues: downServices.map(s => `${s.name} is ${s.status}`),
+        openPositions: openPositions,
+        openOrders: openOrders,
+        lastUpdate: tradingStatus.lastUpdate || new Date().toISOString(),
+        services: services,
+        tradingEnabled: tradingStatus.tradingEnabled,
+        stats: tradingStatus.stats
+      };
+    } catch (error) {
+      console.error('Failed to get critical status:', error);
+      return {
+        status: 'error',
+        issues: ['Failed to load trading data'],
+        openPositions: [],
+        openOrders: [],
+        lastUpdate: new Date().toISOString()
+      };
+    }
+  },
+
+  // Get active trading status from trade-orchestrator (direct call with CORS)
+  async getActiveTradingStatus() {
+    try {
+      console.log('📊 Calling trade-orchestrator directly...');
+
+      // Call trade-orchestrator directly (now has CORS enabled)
+      const tradeOrchestratorUrl = process.env.REACT_APP_TRADE_ORCHESTRATOR_URL || 'http://localhost:3013';
+      const response = await axios.get(`${tradeOrchestratorUrl}/api/trading/active-status`, {
+        timeout: 10000
+      });
+      console.log('✅ Trade-orchestrator direct response:', response.data);
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get active trading status from trade-orchestrator:', error);
+
+      // Fallback to monitoring service if trade-orchestrator is unavailable
+      console.log('🔄 Falling back to monitoring service...');
+      try {
+        const dashboard = await apiClient.get('/api/dashboard');
+
+        // Convert monitoring service data to trade-orchestrator format
+        const positions = (dashboard.positions || []).filter(pos => pos.netPos !== 0);
+        const orders = (dashboard.orders || []).filter(order =>
+          (order.orderStatus === 'Working' || order.status === 'working') &&
+          order.id && order.symbol
+        );
+
+        // Calculate basic P&L from monitoring service data if available
+        const calculatedPnL = positions.reduce((total, pos) => {
+          return total + (pos.unrealizedPnL || pos.pnl || 0);
+        }, 0);
+
+        console.log('🔄 Using monitoring service fallback - P&L may not be real-time');
+
+        return {
+          tradingEnabled: true,
+          positions: positions,
+          pendingEntryOrders: orders.filter(o => !o.orderRole || o.orderRole === 'entry'),
+          stopOrders: orders.filter(o => o.orderRole === 'stop_loss'),
+          targetOrders: orders.filter(o => o.orderRole === 'take_profit'),
+          stats: {
+            totalPositions: positions.length,
+            totalWorkingOrders: orders.length,
+            dailyTrades: 0,
+            dailyPnL: calculatedPnL
+          },
+          lastUpdate: new Date().toISOString(),
+          fallbackMode: true // Flag to indicate this is fallback data
+        };
+      } catch (fallbackError) {
+        console.error('❌ Fallback to monitoring service also failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
+  },
+
+  // Get enhanced trading status with signal context and market data
+  async getEnhancedTradingStatus() {
+    try {
+      console.log('🎯 Getting enhanced trading status...');
+
+      // Call the monitoring service proxy endpoint we just created
+      const response = await apiClient.get('/api/trading/enhanced-status');
+      console.log('✅ Enhanced trading status response:', response);
+
+      return response;
+    } catch (error) {
+      console.error('❌ Failed to get enhanced trading status:', error);
+      throw error;
+    }
   },
 
   async getTradingHealth() {
     try {
       console.log('🏥 Calling getTradingHealth...');
-      const result = await apiClient.get('/api/trading/health');
-      console.log('✅ getTradingHealth success:', result);
-      return result;
+      const services = await apiClient.get('/api/services');
+      console.log('✅ getTradingHealth success:', services);
+
+      // Find the tradovate service
+      const tradovateService = services.find(s => s.name === 'tradovate-service');
+
+      if (tradovateService) {
+        return {
+          authenticated: tradovateService.status === 'running',
+          authenticationStatus: tradovateService.status === 'running' ? 'connected' : 'failed',
+          authenticationError: tradovateService.status !== 'running' ? 'Service not running' : null,
+          service: tradovateService
+        };
+      } else {
+        return {
+          authenticated: false,
+          authenticationStatus: 'failed',
+          authenticationError: 'Tradovate service not found'
+        };
+      }
     } catch (error) {
       console.error('❌ getTradingHealth failed:', error);
-      console.error('❌ Error details:', {
-        message: error.message,
-        config: error.config,
-        request: error.request,
-        response: error.response
-      });
-      throw error;
+      return {
+        authenticated: false,
+        authenticationStatus: 'failed',
+        authenticationError: error.message
+      };
+    }
+  },
+
+  // Activity log
+  async getActivity(limit = 100) {
+    return await apiClient.get(`/api/activity?limit=${limit}`);
+  },
+
+  // Service monitoring
+  async getServices() {
+    return await apiClient.get('/api/services');
+  },
+
+  // Market data / quotes
+  async getQuotes() {
+    try {
+      return await apiClient.get('/api/quotes');
+    } catch (error) {
+      console.log('Quotes not available:', error.message);
+      return {};
     }
   },
 
   async reSync() {
     try {
       console.log('🔄 Calling reSync...');
-      const result = await apiClient.post('/api/trading/re-sync');
+      // Monitoring service doesn't have re-sync, but we can get fresh data
+      const result = await apiClient.get('/api/dashboard');
       console.log('✅ reSync success:', result);
-      return result.data;
+      return result;
     } catch (error) {
       console.error('❌ reSync failed:', error);
       throw error;
     }
   },
 
-  // Order management
+  // Order management - these would need to be sent to tradovate-service via Redis
   async placeOrder(orderData) {
-    return await apiClient.post('/api/trading/order', orderData);
+    // For now, just log - actual implementation would publish to Redis
+    console.log('📋 Order placement request:', orderData);
+    throw new Error('Order placement not yet implemented in monitoring service');
   },
 
   async cancelOrder(orderId) {
-    return await apiClient.delete(`/api/trading/order/${orderId}`);
+    // For now, just log - actual implementation would publish to Redis
+    console.log('🚫 Order cancellation request:', orderId);
+    throw new Error('Order cancellation not yet implemented in monitoring service');
   },
 
   async subscribeToQuote(symbol) {
-    return await apiClient.get(`/api/trading/quote/${symbol}`);
+    // Monitoring service provides price data in dashboard
+    const dashboard = await apiClient.get('/api/dashboard');
+    return dashboard.prices[symbol] || null;
   },
 
-  // Webhook endpoints
+  // Webhook endpoints - these would be handled by webhook-gateway
   async getWebhookStats() {
-    return await apiClient.get('/webhook/stats');
+    // Get activity related to webhooks
+    const activity = await apiClient.get('/api/activity?limit=50');
+    const webhookActivity = activity.filter(a => a.type === 'webhook');
+    return {
+      totalReceived: webhookActivity.length,
+      recentActivity: webhookActivity.slice(-10)
+    };
   },
 
   async testWebhook(testData = {}) {
-    return await apiClient.post('/webhook/test', {
-      action: 'BUY',
-      symbol: 'ES',
-      qty: 1,
-      account: 'test',
-      ...testData
-    });
+    console.log('🧪 Webhook test request:', testData);
+    throw new Error('Webhook testing not yet implemented in monitoring service');
   },
 
   // Account-specific endpoints
   async getAccountPositions(accountId) {
-    return await apiClient.get(`/api/account/${accountId}/positions`);
+    return await apiClient.get(`/api/positions?accountId=${accountId}`);
   },
 
   async getAccountOrders(accountId) {
-    return await apiClient.get(`/api/account/${accountId}/orders`);
+    const dashboard = await apiClient.get('/api/dashboard');
+    const orders = dashboard.orders || [];
+    return orders.filter(order => order.accountId === accountId);
   },
 
   // System endpoints
   async getSystemHealth() {
-    return await apiClient.get('/api/system/health');
+    return await apiClient.get('/api/services');
   },
 
-  // Webhook Relay endpoints
+  // Legacy endpoints - not available in monitoring service
+  // These would need to be implemented via webhook-gateway or other services
+
   async getRelayStatus() {
-    return await apiClient.get('/api/system/relay/status');
+    // Check if webhook-gateway service is running
+    const services = await apiClient.get('/api/services');
+    const gateway = services.find(s => s.name === 'webhook-gateway');
+    return gateway ? { status: gateway.status } : { status: 'unknown' };
   },
 
   async startRelay() {
-    return await apiClient.post('/api/system/relay/start');
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async stopRelay(force = false) {
-    return await apiClient.post('/api/system/relay/stop', { force });
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async restartRelay() {
-    return await apiClient.post('/api/system/relay/restart');
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async getRelayLogs(lines = 50) {
-    return await apiClient.get(`/api/system/relay/logs?lines=${lines}`);
+    // Get recent webhook activity instead
+    const activity = await apiClient.get(`/api/activity?limit=${lines}`);
+    return activity.filter(a => a.type === 'webhook').map(a => a.message);
   },
 
   async updateRelayConfig(config) {
-    return await apiClient.post('/api/system/relay/config', config);
+    throw new Error('Relay configuration not implemented in monitoring service');
   },
 
   async testRelayCommand() {
-    return await apiClient.get('/api/system/relay/test');
+    throw new Error('Relay testing not implemented in monitoring service');
   },
 
-  // Kill switch endpoints
+  // Kill switch endpoints - would need to be implemented
   async getKillSwitchStatus() {
-    return await apiClient.get('/api/trading/kill-switch');
+    // Check for critical status in services
+    const services = await apiClient.get('/api/services');
+    const criticalServices = services.filter(s => s.status !== 'running');
+    return {
+      enabled: criticalServices.length > 0,
+      reason: criticalServices.length > 0 ? 'Service issues detected' : null
+    };
   },
 
   async setKillSwitch(enabled, reason = null) {
-    return await apiClient.post('/api/trading/kill-switch', { enabled, reason });
+    throw new Error('Kill switch control not implemented in monitoring service');
   },
 
   // Position sizing endpoints
@@ -220,28 +413,47 @@ export const api = {
   },
 
   async calculatePositionSize(symbol, accountBalance = null) {
-    return await apiClient.post('/api/position-sizing/calculate', { symbol, accountBalance });
+    return {
+      quantity: 1,
+      riskAmount: 0,
+      stopLoss: 0
+    };
   },
 
   async getContractSpecs() {
-    return await apiClient.get('/api/position-sizing/contracts');
+    return {};
   },
 
   async testPositionSizing(symbol = 'MNQ') {
-    return await apiClient.post('/api/position-sizing/test', { symbol });
+    return {
+      symbol,
+      quantity: 1,
+      success: false,
+      message: 'Position sizing not available in monitoring mode'
+    };
   },
 
-  // Margin management endpoints
+  // Margin management endpoints - not applicable to monitoring service
+  // Return empty data to prevent errors in dashboard
   async getMarginSettings() {
-    return await apiClient.get('/api/position-sizing/margins');
+    return {
+      enabled: false,
+      marginSettings: {}
+    };
   },
 
   async setMarginSettings(marginSettings) {
-    return await apiClient.post('/api/position-sizing/margins', { marginSettings });
+    console.log('Margin settings update not available in monitoring mode');
+    return marginSettings;
   },
 
   async getOptimalContract(symbol, accountBalance = null) {
-    return await apiClient.post('/api/position-sizing/optimal', { symbol, accountBalance });
+    return {
+      symbol,
+      quantity: 1,
+      optimal: false,
+      message: 'Contract optimization not available in monitoring mode'
+    };
   }
 };
 

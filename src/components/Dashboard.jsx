@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AccountInfo from './AccountInfo';
 import TradesList from './TradesList';
+import QuotesPanel from './QuotesPanel';
+import EnhancedTradingStatus from './EnhancedTradingStatus';
 import { api } from '../services/api';
 
 const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
@@ -14,6 +16,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [isTradovateChecking, setIsTradovateChecking] = useState(false);
   const [criticalStatus, setCriticalStatus] = useState(null);
   const [criticalStatusError, setCriticalStatusError] = useState(null);
+  const [quotes, setQuotes] = useState({});
 
   // Webhook relay state
   const [relayStatus, setRelayStatus] = useState({
@@ -31,7 +34,8 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     method: 'fixed',
     fixedQuantity: 1,
     riskPercentage: 10,
-    maxContracts: 10
+    maxContracts: 10,
+    contractType: 'auto'
   });
   const [showPositionSizingModal, setShowPositionSizingModal] = useState(false);
   const [positionSizingLoading, setPositionSizingLoading] = useState(false);
@@ -40,6 +44,16 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [marginSettings, setMarginSettings] = useState({});
   const [showMarginModal, setShowMarginModal] = useState(false);
   const [marginLoading, setMarginLoading] = useState(false);
+  const [showActivitySidebar, setShowActivitySidebar] = useState(false);
+
+  // Microservice health state
+  const [microserviceHealth, setMicroserviceHealth] = useState({
+    'webhook-gateway': { status: 'unknown', lastChecked: null },
+    'tradovate-service': { status: 'unknown', lastChecked: null },
+    'market-data-service': { status: 'unknown', lastChecked: null },
+    'trade-orchestrator': { status: 'unknown', lastChecked: null },
+    'monitoring-service': { status: 'unknown', lastChecked: null }
+  });
 
   // Live polling state
   const [pollingEnabled, setPollingEnabled] = useState(true);
@@ -47,6 +61,57 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [lastPollingUpdate, setLastPollingUpdate] = useState(null);
   const [criticalStatusInterval, setCriticalStatusInterval] = useState(null);
   const [isReSyncing, setIsReSyncing] = useState(false);
+
+  // Check microservice health
+  const checkMicroserviceHealth = async () => {
+    const services = {
+      'webhook-gateway': process.env.REACT_APP_WEBHOOK_GATEWAY_URL,
+      'tradovate-service': process.env.REACT_APP_TRADOVATE_SERVICE_URL,
+      'market-data-service': process.env.REACT_APP_MARKET_DATA_SERVICE_URL,
+      'trade-orchestrator': process.env.REACT_APP_TRADE_ORCHESTRATOR_URL,
+      'monitoring-service': process.env.REACT_APP_API_URL
+    };
+
+    const healthChecks = await Promise.allSettled(
+      Object.entries(services).map(async ([serviceName, baseUrl]) => {
+        try {
+          const response = await fetch(`${baseUrl}/health`, {
+            method: 'GET',
+            timeout: 5000
+          });
+          return {
+            serviceName,
+            status: response.ok ? 'healthy' : 'unhealthy',
+            lastChecked: new Date()
+          };
+        } catch (error) {
+          return {
+            serviceName,
+            status: 'unhealthy',
+            lastChecked: new Date(),
+            error: error.message
+          };
+        }
+      })
+    );
+
+    const newHealthState = {};
+    healthChecks.forEach((result, index) => {
+      const serviceName = Object.keys(services)[index];
+      if (result.status === 'fulfilled') {
+        newHealthState[serviceName] = result.value;
+      } else {
+        newHealthState[serviceName] = {
+          serviceName,
+          status: 'unhealthy',
+          lastChecked: new Date(),
+          error: result.reason?.message || 'Unknown error'
+        };
+      }
+    });
+
+    setMicroserviceHealth(newHealthState);
+  };
 
   // Load dashboard immediately, check connections in background
   useEffect(() => {
@@ -60,7 +125,8 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       loadPositionSizingSettings(),
       loadMarginSettings(),
       loadAccountsIfNeeded(),
-      loadCriticalStatus()
+      loadCriticalStatus(),
+      checkMicroserviceHealth()
     ]).catch(error => {
       console.error('Background loading error:', error);
     });
@@ -70,10 +136,14 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       console.error('Tradovate connection check error:', error);
     });
 
+    // Set up periodic health checking for microservices (less frequent)
+    const healthCheckInterval = setInterval(checkMicroserviceHealth, 60000); // Every minute
+
     return () => {
       if (criticalStatusInterval) {
         clearInterval(criticalStatusInterval);
       }
+      clearInterval(healthCheckInterval);
     };
   }, []);
 
@@ -122,9 +192,18 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const loadPositionSizingSettings = async () => {
     try {
       const response = await api.getPositionSizingSettings();
-      setPositionSizingSettings(response.settings);
+      setPositionSizingSettings(response.settings || response);
     } catch (error) {
       console.error('Failed to load position sizing settings:', error);
+      // Set default values when loading fails
+      setPositionSizingSettings({
+        method: 'fixed',
+        fixedQuantity: 1,
+        riskPercentage: 10,
+        maxContracts: 10,
+        contractType: 'auto',
+        enabled: false
+      });
     }
   };
 
@@ -163,9 +242,13 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const loadMarginSettings = async () => {
     try {
       const response = await api.getMarginSettings();
-      setMarginSettings(response.marginSettings);
+      setMarginSettings(response.marginSettings || response || {});
     } catch (error) {
       console.error('Failed to load margin settings:', error);
+      // Set default values when loading fails
+      setMarginSettings({
+        enabled: false
+      });
     }
   };
 
@@ -294,6 +377,40 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       socket.socket.on('webhook_received', handleWebhookReceived);
       socket.socket.on('webhook_error', handleWebhookError);
 
+      // Subscribe to market data updates
+      const handleMarketData = (data) => {
+        console.log('📊 Market data received:', data);
+        setQuotes(prev => {
+          const newQuote = {
+            symbol: data.symbol,
+            baseSymbol: data.baseSymbol,
+            open: data.open,
+            high: data.high,
+            low: data.low,
+            close: data.close,
+            previousClose: data.previousClose,
+            volume: data.volume,
+            timestamp: data.timestamp
+          };
+
+          const updates = {
+            ...prev,
+            // Store by full symbol
+            [data.symbol]: newQuote
+          };
+
+          // Also store by base symbol for QuotesPanel compatibility
+          if (data.baseSymbol) {
+            updates[data.baseSymbol] = newQuote;
+          }
+
+          console.log('📊 Updated quotes state:', Object.keys(updates), 'MNQ value:', updates.MNQ?.last, 'MES value:', updates.MES?.last);
+          return updates;
+        });
+      };
+
+      socket.socket.on('market_data', handleMarketData);
+
       // Subscribe to critical status updates
       const handleCriticalStatusUpdate = (data) => {
         console.log('🎯 Critical status update received via WebSocket');
@@ -419,6 +536,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('relay_output', handleRelayOutput);
         socket.socket.off('webhook_received', handleWebhookReceived);
         socket.socket.off('webhook_error', handleWebhookError);
+        socket.socket.off('market_data', handleMarketData);
         socket.socket.off('critical_status_update', handleCriticalStatusUpdate);
         socket.socket.off('initial_activity', handleInitialActivity);
         socket.socket.off('filtered_activity', handleFilteredActivity);
@@ -482,6 +600,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       console.log('🎯 Starting polling - active orders/positions detected');
       const interval = setInterval(() => {
         loadCriticalStatus();
+        checkMicroserviceHealth();
       }, 15000); // More frequent when active
       setCriticalStatusInterval(interval);
     } else if (!hasActiveItems && criticalStatusInterval) {
@@ -497,8 +616,9 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     if (!account && onAccountsLoaded) {
       try {
         const accountsResponse = await api.getAccounts();
-        if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-          onAccountsLoaded(accountsResponse.accounts);
+        const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
+        if (accounts.length > 0) {
+          onAccountsLoaded(accounts);
         }
       } catch (error) {
         // Accounts failed to load, which is fine - Tradovate might not be connected
@@ -574,6 +694,17 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     }
   };
 
+  const loadQuotes = async () => {
+    try {
+      const quotesData = await api.getQuotes?.() || {};
+      setQuotes(quotesData);
+      console.log('📊 Loaded quotes:', Object.keys(quotesData));
+    } catch (error) {
+      console.error('Failed to load quotes:', error.message);
+      // Don't fail the dashboard if quotes fail
+    }
+  };
+
   const loadDashboardData = async () => {
     // Prevent concurrent loading
     if (isLoading) {
@@ -589,6 +720,9 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
       // Load account summary
       await loadAccountSummary();
+
+      // Load initial quotes
+      await loadQuotes();
 
       // Load positions/orders together (they're related)
       await loadOrdersAndPositions();
@@ -830,16 +964,17 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Main Content Area - 2/3 width */}
+    <>
+    <div className="flex flex-col lg:flex-row h-full overflow-hidden relative">
+      {/* Main Content Area - 2/3 width on desktop, full width on mobile */}
       <div className="flex-[2] overflow-y-auto">
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
           {/* Header with refresh button */}
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Trading Dashboard</h2>
-              <div className="flex items-center space-x-4">
-                <p className="text-gray-400">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
+            <div className="w-full sm:w-auto">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Trading Dashboard</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-4">
+                <p className="text-sm sm:text-base text-gray-400 truncate">
                   Account: {account?.name || 'No account'} {account?.id ? `(${account.id})` : ''}
                 </p>
                 <div className="flex items-center space-x-2">
@@ -857,26 +992,26 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                 </p>
               )}
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
               {/* Kill Switch */}
-              <div className={`p-3 rounded-lg border-2 ${tradingEnabled ? 'bg-red-900/20 border-red-500' : 'bg-gray-800 border-gray-600'}`}>
-                <div className="flex items-center space-x-3">
+              <div className={`p-2 sm:p-3 rounded-lg border-2 w-full sm:w-auto ${tradingEnabled ? 'bg-red-900/20 border-red-500' : 'bg-gray-800 border-gray-600'}`}>
+                <div className="flex items-center justify-between sm:space-x-3">
                   <div>
                     <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                       Trading Status
                     </div>
-                    <div className={`font-bold ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`font-bold text-sm sm:text-base ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
                       {tradingEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
                     </div>
                   </div>
                   <button
                     onClick={handleKillSwitchToggle}
                     disabled={isKillSwitchLoading}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                    className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                       tradingEnabled
                         ? 'bg-red-600 hover:bg-red-700 text-white'
                         : 'bg-green-600 hover:bg-green-700 text-white'
-                    } disabled:opacity-50`}
+                    } disabled:opacity-50 min-w-[80px]`}
                   >
                     {isKillSwitchLoading ? (
                       <span className="animate-spin">⏳</span>
@@ -904,211 +1039,40 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
               <button
                 onClick={handleRefresh}
                 disabled={isLoading || isTradovateChecking}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base"
               >
                 <span className={isLoading || isTradovateChecking ? 'animate-spin' : ''}>🔄</span>
-                <span>Refresh</span>
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+
+              {/* Activity Toggle Button - Mobile/Desktop */}
+              <button
+                onClick={() => setShowActivitySidebar(!showActivitySidebar)}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base lg:hidden"
+              >
+                <span>📨</span>
+                <span className="hidden sm:inline">Activity</span>
               </button>
             </div>
           </div>
 
 
-          {/* Critical Trading Status Panel */}
-          <div className="bg-gray-900 border-2 border-blue-500 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span className="text-2xl">🎯</span>
-                Active Trading Status
-              </h3>
-              <div className="text-xs text-gray-400">
-                Last Update: {criticalStatus?.lastUpdate ? new Date(criticalStatus.lastUpdate).toLocaleTimeString() : 'Loading...'}
-              </div>
-            </div>
-
-            {criticalStatus ? (
-              <>
-                {/* Open Positions */}
-                {criticalStatus.openPositions?.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-blue-400 mb-2">📊 Open Positions</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {criticalStatus.openPositions.map((pos, idx) => (
-                        <div key={idx} className="bg-gray-800 rounded p-2">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className="font-bold text-white">{pos.contractDesc || pos.symbol}</span>
-                              <div className="text-xs text-gray-400">
-                                {pos.netPos > 0 ? '🔺 LONG' : '🔻 SHORT'} {Math.abs(pos.netPos)} @ ${pos.netPrice?.toFixed(2) || 'N/A'}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className={`font-bold ${pos.unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                ${pos.unrealizedPnL?.toFixed(2) || '0.00'}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                {pos.unrealizedPnL && pos.netPrice ?
-                                  `${((pos.unrealizedPnL / (Math.abs(pos.netPos) * pos.netPrice)) * 100).toFixed(1)}%` :
-                                  'N/A'
-                                }
-                              </div>
-                            </div>
-                          </div>
-                          {pos.stopOrderId && (
-                            <div className="text-xs text-yellow-400 mt-1">
-                              ⚠️ Stop: {pos.stopPrice ? `$${pos.stopPrice.toFixed(2)}` : 'Active'}
-                            </div>
-                          )}
-                          {pos.profitOrderId && (
-                            <div className="text-xs text-green-400">
-                              🎯 Target: {pos.profitPrice ? `$${pos.profitPrice.toFixed(2)}` : 'Active'}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Open Orders */}
-                {criticalStatus.openOrders?.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-yellow-400 mb-2">⏳ Pending Orders</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {criticalStatus.openOrders.map((order, idx) => (
-                        <div key={idx} className="bg-gray-800 rounded p-2">
-                          {order.isGroup && order.orderType === 'Bracket' ? (
-                            // Bracket order display
-                            <div>
-                              <div className="flex justify-between items-start mb-2">
-                                <div>
-                                  <span className="font-bold text-white">{order.contractDesc || order.symbol}</span>
-                                  <div className="text-xs text-gray-400">
-                                    {order.action} {order.orderQty} @ ${order.price?.toFixed(2) || 'MKT'}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-xs text-green-400">
-                                    🎯 Bracket ({order.groupSize})
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    Entry: {order.orderId}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Bracket Details */}
-                              <div className="border-t border-gray-700 pt-1 space-y-1">
-                                {order.bracketDetails?.stopLoss && (
-                                  <div className="flex justify-between text-xs">
-                                    <span className="text-red-400">🛑 Stop:</span>
-                                    <span className="text-white">${order.bracketDetails.stopLoss.price?.toFixed(2)}</span>
-                                  </div>
-                                )}
-                                {order.bracketDetails?.takeProfit && (
-                                  <div className="flex justify-between text-xs">
-                                    <span className="text-green-400">🎯 Target:</span>
-                                    <span className="text-white">${order.bracketDetails.takeProfit.price?.toFixed(2)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            // Single order display
-                            <div>
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <span className="font-bold text-white">{order.contractDesc || order.symbol}</span>
-                                  <div className="text-xs text-gray-400">
-                                    {order.action} {order.orderQty} @ ${order.price?.toFixed(2) || 'MKT'}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-xs text-yellow-400">
-                                    {order.orderType}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    ID: {order.orderId}
-                                  </div>
-                                </div>
-                              </div>
-                              {order.text && (
-                                <div className="text-xs text-gray-400 mt-1 truncate" title={order.text}>
-                                  📝 {order.text}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-gray-700">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400">Total P&L</div>
-                    <div className={`font-bold ${(criticalStatus.totalDayPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${criticalStatus.totalDayPnL?.toFixed(2) || '0.00'}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400">Open Positions</div>
-                    <div className="font-bold text-white">
-                      {criticalStatus.openPositions?.length || 0}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400">Pending Orders</div>
-                    <div className="font-bold text-white">
-                      {criticalStatus.openOrders?.length || 0}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400">Monitor</div>
-                    <div className="font-bold text-white">
-                      {criticalStatus.positionMonitorStats?.isRunning ? '🟢 Active' : '🔴 Inactive'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Empty State */}
-                {(!criticalStatus.openPositions?.length && !criticalStatus.openOrders?.length) && (
-                  <div className="text-center text-gray-500 py-4">
-                    <div className="text-2xl mb-2">💤</div>
-                    <div>No active positions or pending orders</div>
-                  </div>
-                )}
-              </>
-            ) : criticalStatusError ? (
-              <div className="text-center text-red-400 py-4">
-                <div className="text-2xl mb-2">❌</div>
-                <div>Error loading trading status</div>
-                <div className="text-xs text-gray-400 mt-2">{criticalStatusError}</div>
-                <button
-                  onClick={loadCriticalStatus}
-                  className="mt-2 bg-blue-600 hover:bg-blue-700 px-3 py-1 text-xs rounded"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <div className="text-center text-gray-500 py-4">
-                <div className="text-2xl mb-2">⏳</div>
-                <div>Loading trading status...</div>
-              </div>
-            )}
-          </div>
+          {/* Enhanced Trading Status Panel */}
+          <EnhancedTradingStatus />
 
 
           {/* Account Overview - show when account is available (cached or live) */}
           {account && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1">
+              <div className="lg:col-span-1 space-y-6">
                 <AccountInfo
                   account={account}
                   summary={accountSummary}
                   isLoading={isLoading && !accountSummary}
+                />
+                <QuotesPanel
+                  quotes={quotes}
+                  isLoading={false}
                 />
               </div>
               <div className="lg:col-span-2">
@@ -1131,7 +1095,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="bg-gray-700 p-4 rounded">
                       <h4 className="font-semibold text-white mb-2">Trading Status</h4>
                       <p className={`text-sm font-bold ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
@@ -1144,13 +1108,19 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                     <div className="bg-gray-700 p-4 rounded">
                       <h4 className="font-semibold text-white mb-2">Position Sizing</h4>
                       <p className="text-sm text-blue-400 font-semibold">
-                        {positionSizingSettings.method === 'fixed'
-                          ? `📌 ${positionSizingSettings.fixedQuantity} Contracts`
-                          : `💰 ${positionSizingSettings.riskPercentage}% Risk`
+                        {positionSizingSettings?.method === 'fixed'
+                          ? `📌 ${positionSizingSettings?.fixedQuantity || 1} ${
+                              positionSizingSettings?.contractType === 'full' ? 'Full' :
+                              positionSizingSettings?.contractType === 'micro' ? 'Micro' : ''
+                            } Contracts`
+                          : `💰 ${positionSizingSettings?.riskPercentage || 10}% Risk`
                         }
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {positionSizingSettings.method === 'fixed' ? 'Fixed quantity' : 'Risk-based sizing'}
+                        {positionSizingSettings?.method === 'fixed'
+                          ? `Fixed quantity${positionSizingSettings?.contractType !== 'auto' ? ` (${positionSizingSettings?.contractType} override)` : ''}`
+                          : 'Risk-based sizing'
+                        }
                       </p>
                     </div>
                     <div className="bg-gray-700 p-4 rounded">
@@ -1159,83 +1129,43 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                         {socket?.isConnected ? '✅ Connected' : '❌ Disconnected'}
                       </p>
                     </div>
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">Backend Server</h4>
-                      <p className="text-sm text-green-400">🟢 Running</p>
-                      <p className="text-xs text-gray-400 mt-1">Port 3001</p>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">Webhook Relay</h4>
-                      <p className={`text-sm ${relayStatus.isRunning ? 'text-green-400' : 'text-gray-400'}`}>
-                        {relayStatus.isRunning ? '✅ Running' : '⏸️ Stopped'}
-                      </p>
-                      {relayStatus.connectionUrl && (
-                        <p className="text-xs text-blue-400 mt-1 truncate" title={relayStatus.connectionUrl}>
-                          {relayStatus.connectionUrl}
+
+                    {/* Microservices Health Grid */}
+                    {Object.entries(microserviceHealth).map(([serviceName, health]) => (
+                      <div key={serviceName} className="bg-gray-700 p-4 rounded">
+                        <h4 className="font-semibold text-white mb-2 capitalize">
+                          {serviceName.replace('-', ' ')}
+                        </h4>
+                        <p className={`text-sm font-bold ${
+                          health.status === 'healthy' ? 'text-green-400' :
+                          health.status === 'unhealthy' ? 'text-red-400' :
+                          'text-yellow-400'
+                        }`}>
+                          {health.status === 'healthy' ? '🟢 Healthy' :
+                           health.status === 'unhealthy' ? '🔴 Down' :
+                           '🟡 Unknown'}
                         </p>
-                      )}
-                      {relayStatus.lastError && (
-                        <p className="text-xs text-red-400 mt-1" title={relayStatus.lastError}>
-                          Error: {relayStatus.lastError.substring(0, 30)}...
+                        <p className="text-xs text-gray-400 mt-1">
+                          {health.lastChecked ?
+                            `Last check: ${health.lastChecked.toLocaleTimeString()}` :
+                            'Not checked'}
                         </p>
-                      )}
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">Webhook Endpoint</h4>
-                      <p className="text-sm text-green-400">🟢 Active</p>
-                      <p className="text-xs text-gray-400 mt-1">/autotrader</p>
-                    </div>
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Webhook Relay Controls */}
+                  {/* Microservice Health Controls */}
                   <div className="mt-4 flex space-x-2">
                     <button
-                      onClick={handleStartRelay}
-                      disabled={relayStatus.isRunning || isRelayLoading}
-                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1 text-sm rounded transition-colors"
+                      onClick={checkMicroserviceHealth}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
                     >
-                      {isRelayLoading ? 'Loading...' : 'Start Relay'}
+                      🔄 Refresh Health
                     </button>
-                    <button
-                      onClick={handleStopRelay}
-                      disabled={!relayStatus.isRunning || isRelayLoading}
-                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-1 text-sm rounded transition-colors"
-                    >
-                      {isRelayLoading ? 'Loading...' : 'Stop Relay'}
-                    </button>
-                    <button
-                      onClick={handleRestartRelay}
-                      disabled={isRelayLoading}
-                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1 text-sm rounded transition-colors"
-                    >
-                      {isRelayLoading ? 'Loading...' : 'Restart Relay'}
-                    </button>
-                  </div>
-
-                  {/* External Webhook URL - moved here for better layout */}
-                  {relayStatus.connectionUrl && (
-                    <div className="mt-4 p-3 bg-blue-900/20 rounded border border-blue-500/30">
-                      <h4 className="text-sm font-semibold text-blue-300 mb-2">🌐 External Webhook URL</h4>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={relayStatus.connectionUrl}
-                          readOnly
-                          className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs flex-1 font-mono"
-                        />
-                        <button
-                          onClick={() => navigator.clipboard.writeText(relayStatus.connectionUrl)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-xs rounded transition-colors"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                      <p className="text-xs text-blue-300 mt-2">Use this URL in TradingView webhooks</p>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
+          </div>
           )}
 
           {/* Recent Orders History */}
@@ -1249,101 +1179,12 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
         </div>
       </div>
-
-      {/* Right Sidebar - Activity Log - 1/3 width */}
-      <div className="flex-[1] bg-gray-800 border-l border-gray-700 flex flex-col h-full">
-        <div className="p-4 border-b border-gray-700 flex-shrink-0">
-          <h3 className="text-lg font-semibold text-white flex items-center">
-            📨 Recent Activity
-          </h3>
-          {/* Filter Dropdown */}
-          <div className="mt-3">
-            <select
-              value={activityFilter}
-              onChange={(e) => {
-                setActivityFilter(e.target.value);
-                if (socket) {
-                  socket.emit('filter_activity', e.target.value);
-                }
-              }}
-              className="bg-gray-700 border border-gray-600 text-white text-sm px-3 py-1 rounded w-full"
-            >
-              <option value="all">📊 All Activity</option>
-              <option value="webhook">📨 Trading Signals</option>
-              <option value="relay">🔗 Relay Status</option>
-              <option value="system">⚙️ System Events</option>
-              <option value="trade">💰 Trade Executions</option>
-              <option value="error">❌ Errors</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          {relayLogs.filter(log =>
-            activityFilter === 'all' || log.type === activityFilter
-          ).length > 0 ? (
-            <div className="space-y-2">
-              {relayLogs
-                .filter(log => activityFilter === 'all' || log.type === activityFilter)
-                .slice(-50).reverse().map((log, index) => (
-                <div
-                  key={index}
-                  className={`text-sm p-3 rounded ${
-                    log.type === 'stderr' ? 'bg-red-900/20 text-red-300' :
-                    log.type === 'webhook' && log.blocked ? 'bg-red-900/20 text-red-300 border border-red-500/30 cursor-pointer hover:bg-red-900/30 transition-colors' :
-                    log.type === 'webhook' && log.contractSelection?.converted ? 'bg-orange-900/20 text-orange-300 border border-orange-500/30 cursor-pointer hover:bg-orange-900/30 transition-colors' :
-                    log.type === 'webhook' ? 'bg-blue-900/20 text-blue-300 border border-blue-500/30 cursor-pointer hover:bg-blue-900/30 transition-colors' :
-                    'bg-gray-700 text-gray-300'
-                  }`}
-                  onClick={log.type === 'webhook' ? () => handleShowJsonData(log) : undefined}
-                  title={log.type === 'webhook' ? 'Click to view raw webhook data' : ''}
-                >
-                  <div className="text-xs text-gray-500 mb-1">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                    {log.type === 'webhook' && <span className="ml-2 text-blue-400">📋 Click for JSON</span>}
-                    {log.contractSelection?.converted && (
-                      <span className="ml-2 text-orange-400 font-semibold">🔄 CONVERTED</span>
-                    )}
-                    {log.blocked && (
-                      <span className="ml-2 text-red-400 font-semibold">🚫 BLOCKED</span>
-                    )}
-                  </div>
-                  <div className="font-mono text-xs leading-relaxed">{log.data.trim()}</div>
-                  {log.contractSelection && (
-                    <div className="mt-2 text-xs bg-gray-800/50 p-2 rounded border-l-2 border-blue-400">
-                      <div className="font-semibold text-gray-300 mb-1">Contract Selection Details:</div>
-                      <div className="space-y-1 text-gray-400">
-                        <div>Original: <span className="text-white">{log.contractSelection.originalSymbol}</span></div>
-                        <div>Final: <span className="text-white">{log.contractSelection.finalSymbol} × {log.contractSelection.finalQuantity}</span></div>
-                        <div>Account: <span className="text-white">${log.contractSelection.accountBalance?.toLocaleString()}</span></div>
-                        <div>Margin Used: <span className="text-white">${log.contractSelection.marginUsed?.toLocaleString()}</span></div>
-                        <div>Reason: <span className={log.contractSelection.converted ? 'text-orange-300' : 'text-green-300'}>{log.contractSelection.reason}</span></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-gray-400 text-center py-8">
-              <p className="mb-4">No recent activity</p>
-              <div className="text-sm space-y-2">
-                <p className="font-semibold">Webhook endpoints:</p>
-                <div className="space-y-1">
-                  <code className="bg-gray-700 px-2 py-1 rounded text-xs block">POST /autotrader</code>
-                  <code className="bg-gray-700 px-2 py-1 rounded text-xs block">POST /webhook/autotrader</code>
-                  <code className="bg-gray-700 px-2 py-1 rounded text-xs block">POST /webhook/tradingview</code>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Position Sizing Modal */}
+    </div>
+    
+    {/* Position Sizing Modal */}
       {showPositionSizingModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-white">Position Sizing Settings</h3>
               <button
@@ -1375,22 +1216,46 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
               {/* Fixed Quantity */}
               {positionSizingSettings.method === 'fixed' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Fixed Quantity (contracts)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={positionSizingSettings.fixedQuantity}
-                    onChange={(e) => setPositionSizingSettings(prev => ({
-                      ...prev,
-                      fixedQuantity: parseInt(e.target.value) || 1
-                    }))}
-                    className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Fixed Quantity (contracts)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={positionSizingSettings.fixedQuantity}
+                      onChange={(e) => setPositionSizingSettings(prev => ({
+                        ...prev,
+                        fixedQuantity: parseInt(e.target.value) || 1
+                      }))}
+                      className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
+                    />
+                  </div>
+
+                  {/* Contract Type Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Contract Type Override
+                    </label>
+                    <select
+                      value={positionSizingSettings.contractType}
+                      onChange={(e) => setPositionSizingSettings(prev => ({
+                        ...prev,
+                        contractType: e.target.value
+                      }))}
+                      className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
+                    >
+                      <option value="auto">Auto (Use Signal)</option>
+                      <option value="full">Force Full Size (NQ, ES)</option>
+                      <option value="micro">Force Micro (MNQ, MES)</option>
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Override signal's contract type when using fixed sizing
+                    </p>
+                  </div>
+                </>
               )}
 
               {/* Risk Percentage */}
@@ -1478,17 +1343,17 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
               )}
             </div>
 
-            <div className="flex space-x-3 mt-6">
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 mt-6">
               <button
                 onClick={() => setShowPositionSizingModal(false)}
-                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors"
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 sm:py-2 px-4 rounded transition-colors text-base"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePositionSizing}
                 disabled={positionSizingLoading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white py-2 px-4 rounded transition-colors"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white py-3 sm:py-2 px-4 rounded transition-colors text-base"
               >
                 {positionSizingLoading ? 'Saving...' : 'Save Settings'}
               </button>
@@ -1499,8 +1364,8 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
       {/* Margin Settings Modal */}
       {showMarginModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-white">💰 Day Margin Requirements</h3>
               <button
@@ -1680,7 +1545,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
