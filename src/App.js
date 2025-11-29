@@ -4,7 +4,6 @@ import TestTrading from './components/TestTrading';
 import Login from './components/Login';
 import { useWebSocket } from './hooks/useWebSocket';
 import { api } from './services/api';
-import apiClient from './services/apiAuth';
 import { authUtils } from './utils/auth';
 import './App.css';
 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { apiUtils } from '../services/api';
 
 const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
   const [expandedSymbol, setExpandedSymbol] = useState(null);
