@@ -1,64 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
 import TestTrading from './components/TestTrading';
-import Login from './components/Login';
 import { useWebSocket } from './hooks/useWebSocket';
 import { api } from './services/api';
-import apiClient from './services/apiAuth';
-import { authUtils } from './utils/auth';
 import './App.css';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' or 'test-trading'
-
-  // Check authentication status on app start
-  useEffect(() => {
-    const checkAuth = async () => {
-      const authenticated = authUtils.isAuthenticated();
-      console.log('🔐 Auth check:', authenticated ? 'authenticated' : 'not authenticated');
-
-      if (authenticated) {
-        // Validate the stored token
-        const isValid = await authUtils.validateToken();
-        if (isValid) {
-          setIsAuthenticated(true);
-        } else {
-          console.log('🚫 Stored token is invalid, clearing');
-          authUtils.clearToken();
-          setIsAuthenticated(false);
-        }
-      } else {
-        setIsAuthenticated(false);
-      }
-
-      setIsCheckingAuth(false);
-    };
-
-    checkAuth();
-  }, []);
-
-  // Handle successful login
-  const handleLogin = async (token) => {
-    console.log('✅ Login successful');
-    setIsAuthenticated(true);
-    // The token is already stored by the Login component
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    console.log('🚪 Logging out');
-    authUtils.logout();
-    setIsAuthenticated(false);
-    setAccounts([]);
-    setSelectedAccount(null);
-  };
 
   // Memoized WebSocket callbacks to prevent connection loops
   const handleConnect = useCallback(() => {
@@ -85,24 +38,20 @@ function App() {
     console.log('📊 Market data:', data);
   }, []);
 
-  // WebSocket connection for real-time updates (only when authenticated)
-  const socket = useWebSocket(
-    isAuthenticated ? (process.env.REACT_APP_API_URL || 'http://localhost:3014') : null,
-    {
-      onConnect: handleConnect,
-      onDisconnect: handleDisconnect,
-      onWebhookReceived: handleWebhookReceived,
-      onOrderPlaced: handleOrderPlaced,
-      onMarketData: handleMarketData
-    }
-  );
+  // WebSocket connection for real-time updates
+  const socket = useWebSocket(process.env.REACT_APP_API_URL || 'http://localhost:3014', {
+    onConnect: handleConnect,
+    onDisconnect: handleDisconnect,
+    onWebhookReceived: handleWebhookReceived,
+    onOrderPlaced: handleOrderPlaced,
+    onMarketData: handleMarketData
+  });
 
-  // Load initial data when authenticated
+  // Load initial data - don't block on accounts since Tradovate might not be connected
   useEffect(() => {
-    if (isAuthenticated) {
-      setIsLoading(false);
-    }
-  }, [isAuthenticated]);
+    // Just set loading to false and let the Dashboard handle Tradovate connection status
+    setIsLoading(false);
+  }, []);
 
   const loadAccountData = async () => {
     try {
@@ -114,14 +63,14 @@ function App() {
       const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
       setAccounts(accounts);
 
-      // Select default account or first available account
+      // Select default account (761526) or first available account
       if (accounts.length > 0) {
-        // Try to find a default account
+        // Try to find the default account (761526) - compare as strings
         const defaultAccount = accounts.find(account =>
-          account.id === '33316485' || account.id === 33316485 ||
-          String(account.id) === '33316485'
+          account.id === '761526' || account.id === 761526 ||
+          String(account.id) === '761526'
         );
-        console.log('🔍 Looking for default account in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
+        console.log('🔍 Looking for account 761526 in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
         console.log('🎯 Found default account:', defaultAccount);
         if (defaultAccount) {
           setSelectedAccount(defaultAccount);
@@ -150,24 +99,6 @@ function App() {
     }
   };
 
-  // Show loading while checking authentication
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-300">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show login screen if not authenticated
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  // Show loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -179,7 +110,6 @@ function App() {
     );
   }
 
-  // Show error screen
   if (error) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -198,7 +128,6 @@ function App() {
     );
   }
 
-  // Main authenticated app
   return (
     <div className="h-screen bg-gray-900 text-white flex flex-col">
       {/* Header */}
@@ -265,14 +194,6 @@ function App() {
                 {connectionStatus === 'connected' ? 'Live' : 'Disconnected'}
               </span>
             </div>
-
-            {/* Logout Button */}
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </header>
@@ -287,10 +208,10 @@ function App() {
             onAccountsLoaded={(loadedAccounts) => {
               setAccounts(loadedAccounts);
               if (loadedAccounts.length > 0 && !selectedAccount) {
-                // Try to find the default account
+                // Try to find the default account (761526) - compare as strings
                 const defaultAccount = loadedAccounts.find(account =>
-                  account.id === '33316485' || account.id === 33316485 ||
-                  String(account.id) === '33316485'
+                  account.id === '761526' || account.id === 761526 ||
+                  String(account.id) === '761526'
                 );
                 if (defaultAccount) {
                   setSelectedAccount(defaultAccount);

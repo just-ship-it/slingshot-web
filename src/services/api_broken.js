@@ -12,22 +12,15 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor for logging and authentication
+// Request interceptor for logging
 apiClient.interceptors.request.use(
   (config) => {
-    // Add authentication token from localStorage
-    const token = localStorage.getItem('dashboardToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
     const fullUrl = config.baseURL + config.url;
     console.log(`🌐 API Request: ${config.method?.toUpperCase()} ${fullUrl}`);
     console.log('🔍 Full config:', {
       baseURL: config.baseURL,
       url: config.url,
-      method: config.method,
-      hasAuth: !!token
+      method: config.method
     });
     return config;
   },
@@ -37,7 +30,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling and auto-logout on 401
+// Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => {
     console.log(`✅ API Response: ${response.status} ${response.config.url}`);
@@ -46,14 +39,6 @@ apiClient.interceptors.response.use(
   (error) => {
     const errorMessage = error.response?.data?.error || error.message || 'Network error';
     console.error(`❌ API Error: ${error.response?.status || 'Unknown'} - ${errorMessage}`);
-
-    // Handle 401 unauthorized responses
-    if (error.response?.status === 401) {
-      console.log('🚫 Received 401 - clearing token and reloading');
-      localStorage.removeItem('dashboardToken');
-      window.location.reload(); // Force reload to show login screen
-      return Promise.reject(new Error('Authentication required'));
-    }
 
     // Create user-friendly error messages
     const userError = new Error(errorMessage);
@@ -141,7 +126,7 @@ export const api = {
 
   async getCriticalStatus() {
     try {
-      // Get clean trading data from trade-orchestrator via monitoring service proxy
+      // Get clean trading data from trade-orchestrator
       const tradingStatus = await this.getActiveTradingStatus();
       const services = await apiClient.get('/api/services');
 
@@ -177,16 +162,60 @@ export const api = {
     }
   },
 
-  // Get active trading status via monitoring service proxy
+  // Get active trading status from trade-orchestrator (direct call with CORS)
   async getActiveTradingStatus() {
     try {
-      console.log('📊 Getting trading status via monitoring service...');
-      const response = await apiClient.get('/api/trading/active-status');
-      console.log('✅ Trading status response:', response);
-      return response;
+      console.log('📊 Calling trade-orchestrator directly...');
+
+      // Call trade-orchestrator directly (now has CORS enabled)
+      const tradeOrchestratorUrl = process.env.REACT_APP_TRADE_ORCHESTRATOR_URL || 'http://localhost:3013';
+      const response = await axios.get(`${tradeOrchestratorUrl}/api/trading/active-status`, {
+        timeout: 10000
+      });
+      console.log('✅ Trade-orchestrator direct response:', response.data);
+
+      return response.data;
     } catch (error) {
-      console.error('❌ Failed to get active trading status:', error);
-      throw error;
+      console.error('❌ Failed to get active trading status from trade-orchestrator:', error);
+
+      // Fallback to monitoring service if trade-orchestrator is unavailable
+      console.log('🔄 Falling back to monitoring service...');
+      try {
+        const dashboard = await apiClient.get('/api/dashboard');
+
+        // Convert monitoring service data to trade-orchestrator format
+        const positions = (dashboard.positions || []).filter(pos => pos.netPos !== 0);
+        const orders = (dashboard.orders || []).filter(order =>
+          (order.orderStatus === 'Working' || order.status === 'working') &&
+          order.id && order.symbol
+        );
+
+        // Calculate basic P&L from monitoring service data if available
+        const calculatedPnL = positions.reduce((total, pos) => {
+          return total + (pos.unrealizedPnL || pos.pnl || 0);
+        }, 0);
+
+        console.log('🔄 Using monitoring service fallback - P&L may not be real-time');
+
+        return {
+          tradingEnabled: true,
+          positions: positions,
+          pendingEntryOrders: orders.filter(o => !o.orderRole || o.orderRole === 'entry'),
+          stopOrders: orders.filter(o => o.orderRole === 'stop_loss'),
+          targetOrders: orders.filter(o => o.orderRole === 'take_profit'),
+          stats: {
+            totalPositions: positions.length,
+            totalWorkingOrders: orders.length,
+            dailyTrades: 0,
+            dailyPnL: calculatedPnL
+          },
+          lastUpdate: new Date().toISOString(),
+          fallbackMode: true // Flag to indicate this is fallback data
+        };
+      } catch (fallbackError) {
+        console.error('❌ Fallback to monitoring service also failed:', fallbackError);
+        throw fallbackError;
+      }
     }
   },
 
@@ -194,8 +223,11 @@ export const api = {
   async getEnhancedTradingStatus() {
     try {
       console.log('🎯 Getting enhanced trading status...');
+
+      // Call the monitoring service proxy endpoint we just created
       const response = await apiClient.get('/api/trading/enhanced-status');
       console.log('✅ Enhanced trading status response:', response);
+
       return response;
     } catch (error) {
       console.error('❌ Failed to get enhanced trading status:', error);
@@ -269,6 +301,41 @@ export const api = {
     }
   },
 
+  // Order management - these would need to be sent to tradovate-service via Redis
+  async placeOrder(orderData) {
+    // For now, just log - actual implementation would publish to Redis
+    console.log('📋 Order placement request:', orderData);
+    throw new Error('Order placement not yet implemented in monitoring service');
+  },
+
+  async cancelOrder(orderId) {
+    // For now, just log - actual implementation would publish to Redis
+    console.log('🚫 Order cancellation request:', orderId);
+    throw new Error('Order cancellation not yet implemented in monitoring service');
+  },
+
+  async subscribeToQuote(symbol) {
+    // Monitoring service provides price data in dashboard
+    const dashboard = await apiClient.get('/api/dashboard');
+    return dashboard.prices[symbol] || null;
+  },
+
+  // Webhook endpoints - these would be handled by webhook-gateway
+  async getWebhookStats() {
+    // Get activity related to webhooks
+    const activity = await apiClient.get('/api/activity?limit=50');
+    const webhookActivity = activity.filter(a => a.type === 'webhook');
+    return {
+      totalReceived: webhookActivity.length,
+      recentActivity: webhookActivity.slice(-10)
+    };
+  },
+
+  async testWebhook(testData = {}) {
+    console.log('🧪 Webhook test request:', testData);
+    throw new Error('Webhook testing not yet implemented in monitoring service');
+  },
+
   // Account-specific endpoints
   async getAccountPositions(accountId) {
     return await apiClient.get(`/api/positions?accountId=${accountId}`);
@@ -285,24 +352,26 @@ export const api = {
     return await apiClient.get('/api/services');
   },
 
-  // Legacy endpoints - using monitoring service equivalents
+  // Legacy endpoints - not available in monitoring service
+  // These would need to be implemented via webhook-gateway or other services
+
   async getRelayStatus() {
-    // Since we removed webhook-gateway, just return monitoring service status
+    // Check if webhook-gateway service is running
     const services = await apiClient.get('/api/services');
-    const monitoringService = services.find(s => s.name === 'monitoring-service');
-    return monitoringService ? { status: monitoringService.status } : { status: 'unknown' };
+    const gateway = services.find(s => s.name === 'webhook-gateway');
+    return gateway ? { status: gateway.status } : { status: 'unknown' };
   },
 
   async startRelay() {
-    throw new Error('Relay control not needed - webhooks handled by monitoring service');
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async stopRelay(force = false) {
-    throw new Error('Relay control not needed - webhooks handled by monitoring service');
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async restartRelay() {
-    throw new Error('Relay control not needed - webhooks handled by monitoring service');
+    throw new Error('Relay control not implemented in monitoring service');
   },
 
   async getRelayLogs(lines = 50) {
@@ -312,14 +381,14 @@ export const api = {
   },
 
   async updateRelayConfig(config) {
-    throw new Error('Relay configuration not needed - webhooks handled by monitoring service');
+    throw new Error('Relay configuration not implemented in monitoring service');
   },
 
   async testRelayCommand() {
-    throw new Error('Relay testing not needed - webhooks handled by monitoring service');
+    throw new Error('Relay testing not implemented in monitoring service');
   },
 
-  // Kill switch endpoints
+  // Kill switch endpoints - would need to be implemented
   async getKillSwitchStatus() {
     // Check for critical status in services
     const services = await apiClient.get('/api/services');
@@ -364,42 +433,8 @@ export const api = {
     };
   },
 
-  // Order management - these would need to be sent to tradovate-service via Redis
-  async placeOrder(orderData) {
-    // For now, just log - actual implementation would publish to Redis
-    console.log('📋 Order placement request:', orderData);
-    throw new Error('Order placement not yet implemented in monitoring service');
-  },
-
-  async cancelOrder(orderId) {
-    // For now, just log - actual implementation would publish to Redis
-    console.log('🚫 Order cancellation request:', orderId);
-    throw new Error('Order cancellation not yet implemented in monitoring service');
-  },
-
-  async subscribeToQuote(symbol) {
-    // Monitoring service provides price data in dashboard
-    const dashboard = await apiClient.get('/api/dashboard');
-    return dashboard.prices[symbol] || null;
-  },
-
-  // Webhook endpoints - these would be handled by monitoring service
-  async getWebhookStats() {
-    // Get activity related to webhooks
-    const activity = await apiClient.get('/api/activity?limit=50');
-    const webhookActivity = activity.filter(a => a.type === 'webhook');
-    return {
-      totalReceived: webhookActivity.length,
-      recentActivity: webhookActivity.slice(-10)
-    };
-  },
-
-  async testWebhook(testData = {}) {
-    console.log('🧪 Webhook test request:', testData);
-    throw new Error('Webhook testing not yet implemented in monitoring service');
-  },
-
   // Margin management endpoints - not applicable to monitoring service
+  // Return empty data to prevent errors in dashboard
   async getMarginSettings() {
     return {
       enabled: false,
@@ -426,6 +461,9 @@ export const api = {
  * Utility functions for API data processing
  */
 export const apiUtils = {
+  /**
+   * Format currency values
+   */
   formatCurrency(value, currency = 'USD') {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -435,6 +473,9 @@ export const apiUtils = {
     }).format(value || 0);
   },
 
+  /**
+   * Format percentage values
+   */
   formatPercentage(value) {
     return new Intl.NumberFormat('en-US', {
       style: 'percent',
@@ -443,10 +484,16 @@ export const apiUtils = {
     }).format((value || 0) / 100);
   },
 
+  /**
+   * Format numbers with commas
+   */
   formatNumber(value) {
     return new Intl.NumberFormat('en-US').format(value || 0);
   },
 
+  /**
+   * Format timestamp
+   */
   formatTimestamp(timestamp) {
     return new Date(timestamp).toLocaleString('en-US', {
       month: 'short',
@@ -457,18 +504,27 @@ export const apiUtils = {
     });
   },
 
+  /**
+   * Get position status color
+   */
   getPositionStatusColor(quantity) {
     if (quantity > 0) return 'text-green-400';
     if (quantity < 0) return 'text-red-400';
     return 'text-gray-400';
   },
 
+  /**
+   * Get P&L color
+   */
   getPnLColor(pnl) {
     if (pnl > 0) return 'text-green-400';
     if (pnl < 0) return 'text-red-400';
     return 'text-gray-400';
   },
 
+  /**
+   * Get order status color
+   */
   getOrderStatusColor(status) {
     switch (status?.toLowerCase()) {
       case 'working':
@@ -482,6 +538,9 @@ export const apiUtils = {
     }
   },
 
+  /**
+   * Check if trading session is active
+   */
   isTradingSessionActive() {
     const now = new Date();
     const day = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -496,6 +555,9 @@ export const apiUtils = {
     return true;
   },
 
+  /**
+   * Validate order data
+   */
   validateOrderData(orderData) {
     const errors = [];
 

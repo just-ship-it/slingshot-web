@@ -7,16 +7,17 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
   // Debug: Log when quotes prop changes
   useEffect(() => {
     console.log('🎯 QuotesPanel received quotes update:', {
-      MNQ: quotes.MNQ?.last,
-      NQ: quotes.NQ?.last,
-      MES: quotes.MES?.last,
-      ES: quotes.ES?.last,
+      BTC: quotes.BTC?.close,
+      MNQ: quotes.MNQ?.close,
+      NQ: quotes.NQ?.close,
+      MES: quotes.MES?.close,
+      ES: quotes.ES?.close,
       allKeys: Object.keys(quotes)
     });
   }, [quotes]);
 
   // Supported symbols that we want to display
-  const supportedSymbols = ['MNQ', 'NQ', 'MES', 'ES'];
+  const supportedSymbols = ['MNQ', 'NQ', 'MES', 'ES', 'BTC'];
 
   // Price change calculation removed - showing current prices only
 

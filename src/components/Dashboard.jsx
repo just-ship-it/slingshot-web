@@ -47,13 +47,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [showActivitySidebar, setShowActivitySidebar] = useState(false);
 
   // Microservice health state
-  const [microserviceHealth, setMicroserviceHealth] = useState({
-    'webhook-gateway': { status: 'unknown', lastChecked: null },
-    'tradovate-service': { status: 'unknown', lastChecked: null },
-    'market-data-service': { status: 'unknown', lastChecked: null },
-    'trade-orchestrator': { status: 'unknown', lastChecked: null },
-    'monitoring-service': { status: 'unknown', lastChecked: null }
-  });
+  const [microserviceHealth, setMicroserviceHealth] = useState({});
 
   // Live polling state
   const [pollingEnabled, setPollingEnabled] = useState(true);
@@ -62,55 +56,36 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [criticalStatusInterval, setCriticalStatusInterval] = useState(null);
   const [isReSyncing, setIsReSyncing] = useState(false);
 
-  // Check microservice health
+  // Check microservice health via monitoring service API
   const checkMicroserviceHealth = async () => {
-    const services = {
-      'webhook-gateway': process.env.REACT_APP_WEBHOOK_GATEWAY_URL,
-      'tradovate-service': process.env.REACT_APP_TRADOVATE_SERVICE_URL,
-      'market-data-service': process.env.REACT_APP_MARKET_DATA_SERVICE_URL,
-      'trade-orchestrator': process.env.REACT_APP_TRADE_ORCHESTRATOR_URL,
-      'monitoring-service': process.env.REACT_APP_API_URL
-    };
+    try {
+      const services = await api.getServices();
+      const healthState = {};
 
-    const healthChecks = await Promise.allSettled(
-      Object.entries(services).map(async ([serviceName, baseUrl]) => {
-        try {
-          const response = await fetch(`${baseUrl}/health`, {
-            method: 'GET',
-            timeout: 5000
-          });
-          return {
-            serviceName,
-            status: response.ok ? 'healthy' : 'unhealthy',
-            lastChecked: new Date()
-          };
-        } catch (error) {
-          return {
-            serviceName,
-            status: 'unhealthy',
-            lastChecked: new Date(),
-            error: error.message
-          };
-        }
-      })
-    );
+      services.forEach(service => {
+        healthState[service.name] = {
+          serviceName: service.name,
+          status: service.status === 'running' ? 'healthy' : 'unhealthy',
+          lastChecked: service.lastChecked ? new Date(service.lastChecked) : new Date(),
+          error: service.error || null,
+          port: service.port,
+          details: service
+        };
+      });
 
-    const newHealthState = {};
-    healthChecks.forEach((result, index) => {
-      const serviceName = Object.keys(services)[index];
-      if (result.status === 'fulfilled') {
-        newHealthState[serviceName] = result.value;
-      } else {
-        newHealthState[serviceName] = {
-          serviceName,
+      setMicroserviceHealth(healthState);
+    } catch (error) {
+      console.error('Failed to check microservice health:', error);
+      // Set all services as unknown on error
+      setMicroserviceHealth({
+        'monitoring-service': {
+          serviceName: 'monitoring-service',
           status: 'unhealthy',
           lastChecked: new Date(),
-          error: result.reason?.message || 'Unknown error'
-        };
-      }
-    });
-
-    setMicroserviceHealth(newHealthState);
+          error: error.message
+        }
+      });
+    }
   };
 
   // Load dashboard immediately, check connections in background
