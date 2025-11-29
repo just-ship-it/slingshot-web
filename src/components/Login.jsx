@@ -22,7 +22,7 @@ const Login = ({ onLogin }) => {
       localStorage.setItem('dashboardToken', token);
 
       // Test the token by making a simple API call
-      const testResponse = await fetch('http://localhost:3014/api/dashboard', {
+      const testResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3014'}/api/dashboard`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
