@@ -20,6 +20,7 @@ export const useWebSocket = (url, options = {}) => {
     onMarketData,
     onOrderUpdate,
     onPositionUpdate,
+    onInitialState,
     autoConnect = true,
     reconnection = true,
     reconnectionAttempts = 5,
@@ -108,11 +109,17 @@ export const useWebSocket = (url, options = {}) => {
       setLastMessage({ type: 'pnl_update', data, timestamp: Date.now() });
     });
 
+    socket.on('initial_state', (data) => {
+      console.log('🔄 Initial state received:', data);
+      setLastMessage({ type: 'initial_state', data, timestamp: Date.now() });
+      options.onInitialState?.(data, socket);
+    });
+
     // Cleanup on unmount
     return () => {
       socket.disconnect();
     };
-  }, [url, autoConnect, onConnect, onDisconnect, onError, onWebhookReceived, onOrderPlaced, onMarketData, onOrderUpdate, onPositionUpdate, reconnection, reconnectionAttempts, reconnectionDelay]);
+  }, [url, autoConnect, onConnect, onDisconnect, onError, onWebhookReceived, onOrderPlaced, onMarketData, onOrderUpdate, onPositionUpdate, onInitialState, reconnection, reconnectionAttempts, reconnectionDelay]);
 
   // Manual connection control
   const connect = () => {

@@ -84,6 +84,12 @@ function App() {
     console.log('📊 Market data:', data);
   }, []);
 
+  const handleInitialState = useCallback((data) => {
+    console.log('🔄 Initial state received in App:', data);
+    // Pass initial state data to dashboard via callback
+    // This will be handled by the Dashboard component
+  }, []);
+
   // WebSocket connection for real-time updates (only when authenticated)
   const socket = useWebSocket(
     isAuthenticated ? (process.env.REACT_APP_API_URL || 'http://localhost:3014') : null,
@@ -92,7 +98,8 @@ function App() {
       onDisconnect: handleDisconnect,
       onWebhookReceived: handleWebhookReceived,
       onOrderPlaced: handleOrderPlaced,
-      onMarketData: handleMarketData
+      onMarketData: handleMarketData,
+      onInitialState: handleInitialState
     }
   );
 
@@ -103,9 +110,11 @@ function App() {
     }
   }, [isAuthenticated]);
 
-  const loadAccountData = async () => {
+  const loadAccountData = async (showGlobalLoading = false) => {
     try {
-      setIsLoading(true);
+      if (showGlobalLoading) {
+        setIsLoading(true);
+      }
       setError(null);
 
       // Try to load accounts, but don't block the entire app if it fails
@@ -137,7 +146,9 @@ function App() {
       // Don't set error - let Dashboard handle Tradovate connection status
       // The app should still be usable for other features (webhooks, etc.)
     } finally {
-      setIsLoading(false);
+      if (showGlobalLoading) {
+        setIsLoading(false);
+      }
     }
   };
 

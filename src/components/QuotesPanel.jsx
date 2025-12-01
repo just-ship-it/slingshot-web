@@ -11,9 +11,14 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
       NQ: quotes.NQ?.close,
       MES: quotes.MES?.close,
       ES: quotes.ES?.close,
-      allKeys: Object.keys(quotes)
+      allKeys: Object.keys(quotes),
+      quotesObjectReference: quotes,
+      timestamp: new Date().toISOString()
     });
   }, [quotes]);
+
+  // Additional debug: Log every render
+  console.log('🔄 QuotesPanel rendering with quotes keys:', Object.keys(quotes));
 
   // Supported symbols that we want to display
   const supportedSymbols = ['MNQ', 'NQ', 'MES', 'ES', 'BTC'];

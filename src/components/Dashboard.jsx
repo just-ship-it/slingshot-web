@@ -253,6 +253,26 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     await handleMarginUpdate(marginSettings);
   };
 
+  // Handle socket connection state changes - refresh data on reconnection
+  useEffect(() => {
+    if (socket?.isConnected) {
+      console.log('🔌 Socket connected - refreshing dashboard data');
+
+      // Refresh quotes, health data, and account data when socket reconnects
+      Promise.all([
+        loadQuotes(),
+        checkMicroserviceHealth(),
+        onRefresh() // Reload account data
+      ]).then(() => {
+        console.log('✅ Data refreshed after socket reconnection');
+      }).catch(error => {
+        console.error('❌ Failed to refresh data after reconnection:', error);
+      });
+    } else if (socket?.isConnected === false) {
+      console.log('❌ Socket disconnected - microservice health may be stale');
+    }
+  }, [socket?.isConnected]);
+
   // Setup WebSocket listeners for relay events
   useEffect(() => {
     console.log('🔌 Setting up WebSocket listeners, socket status:', socket?.isConnected);
@@ -379,7 +399,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
             updates[data.baseSymbol] = newQuote;
           }
 
-          console.log('📊 Updated quotes state:', Object.keys(updates), 'MNQ value:', updates.MNQ?.last, 'MES value:', updates.MES?.last);
+          console.log('📊 Updated quotes state:', Object.keys(updates), 'MNQ value:', updates.MNQ?.close, 'MES value:', updates.MES?.close);
           return updates;
         });
       };
@@ -422,6 +442,51 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
       socket.socket.on('initial_activity', handleInitialActivity);
       socket.socket.on('filtered_activity', handleFilteredActivity);
+
+      // Handle initial state when service reconnects
+      const handleInitialState = (data) => {
+        console.log('🔄 Initial state received:', data);
+
+        // Update microservice health from services data
+        if (data.services && Array.isArray(data.services)) {
+          const healthState = {};
+          data.services.forEach(service => {
+            healthState[service.name] = {
+              serviceName: service.name,
+              status: service.status === 'running' ? 'healthy' : 'unhealthy',
+              lastChecked: new Date(),
+              error: service.error || null,
+              port: service.port,
+              details: service
+            };
+          });
+          setMicroserviceHealth(healthState);
+          console.log('✅ Restored microservice health from initial state');
+        }
+
+        // Update activity logs from initial state
+        if (data.activity && Array.isArray(data.activity)) {
+          const formattedLogs = data.activity.map(activity => ({
+            timestamp: activity.timestamp,
+            type: activity.type,
+            data: activity.message || activity.data
+          }));
+          setRelayLogs(formattedLogs.slice(-100));
+          console.log('✅ Restored activity logs from initial state');
+        }
+
+        // Restore quotes from initial state if available
+        if (data.quotes && Object.keys(data.quotes).length > 0) {
+          setQuotes(data.quotes);
+          console.log('✅ Restored quotes from initial state:', Object.keys(data.quotes));
+        } else {
+          // Fallback to loading quotes if not in initial state
+          loadQuotes();
+          console.log('🔄 Loading quotes since not in initial state');
+        }
+      };
+
+      socket.socket.on('initial_state', handleInitialState);
 
       // Handle kill switch changes
       const handleKillSwitchChanged = (data) => {
@@ -515,6 +580,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('critical_status_update', handleCriticalStatusUpdate);
         socket.socket.off('initial_activity', handleInitialActivity);
         socket.socket.off('filtered_activity', handleFilteredActivity);
+        socket.socket.off('initial_state', handleInitialState);
         socket.socket.off('kill_switch_changed', handleKillSwitchChanged);
         socket.socket.off('webhook_blocked', handleWebhookBlocked);
         socket.socket.off('data_collector_initialized', handleDataCollectorInitialized);
