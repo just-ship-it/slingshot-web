@@ -20,6 +20,8 @@ export const useWebSocket = (url, options = {}) => {
     onMarketData,
     onOrderUpdate,
     onPositionUpdate,
+    onOrderRealtimeUpdate,
+    onPositionRealtimeUpdate,
     onInitialState,
     autoConnect = true,
     reconnection = true,
@@ -93,6 +95,18 @@ export const useWebSocket = (url, options = {}) => {
       onPositionUpdate?.(data, socket);
     });
 
+    socket.on('position_realtime_update', (data) => {
+      console.log('📍 Position real-time update:', data);
+      setLastMessage({ type: 'position_realtime_update', data, timestamp: Date.now() });
+      onPositionRealtimeUpdate?.(data, socket);
+    });
+
+    socket.on('order_realtime_update', (data) => {
+      console.log('📋 Order real-time update:', data);
+      setLastMessage({ type: 'order_realtime_update', data, timestamp: Date.now() });
+      onOrderRealtimeUpdate?.(data, socket);
+    });
+
     socket.on('market_data', (data) => {
       console.log('📊 Market data:', data);
       setLastMessage({ type: 'market_data', data, timestamp: Date.now() });
@@ -119,7 +133,7 @@ export const useWebSocket = (url, options = {}) => {
     return () => {
       socket.disconnect();
     };
-  }, [url, autoConnect, onConnect, onDisconnect, onError, onWebhookReceived, onOrderPlaced, onMarketData, onOrderUpdate, onPositionUpdate, onInitialState, reconnection, reconnectionAttempts, reconnectionDelay]);
+  }, [url, autoConnect, onConnect, onDisconnect, onError, onWebhookReceived, onOrderPlaced, onMarketData, onOrderUpdate, onPositionUpdate, onOrderRealtimeUpdate, onPositionRealtimeUpdate, onInitialState, reconnection, reconnectionAttempts, reconnectionDelay]);
 
   // Manual connection control
   const connect = () => {

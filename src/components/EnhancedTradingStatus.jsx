@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 
-const EnhancedTradingStatus = () => {
+const EnhancedTradingStatus = ({ socket }) => {
   const [tradingData, setTradingData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -26,14 +26,92 @@ const EnhancedTradingStatus = () => {
     }
   };
 
-  // Load data on mount and set up polling
+  // Real-time update handler for positions
+  const handlePositionRealtimeUpdate = (positionUpdate) => {
+    console.log('🔄 Real-time position update received:', positionUpdate);
+
+    setTradingData(prevData => {
+      if (!prevData || !prevData.openPositions) return prevData;
+
+      const updatedPositions = prevData.openPositions.map(pos => {
+        if (pos.positionId === positionUpdate.positionId || pos.symbol === positionUpdate.symbol) {
+          return {
+            ...pos,
+            currentPrice: positionUpdate.currentPrice,
+            unrealizedPnL: positionUpdate.unrealizedPnL,
+            realizedPnL: positionUpdate.realizedPnL,
+            lastUpdate: positionUpdate.lastUpdate,
+            marketData: positionUpdate.marketData
+          };
+        }
+        return pos;
+      });
+
+      return {
+        ...prevData,
+        openPositions: updatedPositions,
+        stats: {
+          ...prevData.stats,
+          totalUnrealizedPnL: updatedPositions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
+        }
+      };
+    });
+
+    setLastUpdate(new Date());
+  };
+
+  // Real-time update handler for orders
+  const handleOrderRealtimeUpdate = (orderUpdate) => {
+    console.log('🔄 Real-time order update received:', orderUpdate);
+
+    setTradingData(prevData => {
+      if (!prevData || !prevData.pendingOrders) return prevData;
+
+      const updatedOrders = prevData.pendingOrders.map(order => {
+        if (order.orderId === orderUpdate.orderId) {
+          return {
+            ...order,
+            currentPrice: orderUpdate.currentPrice,
+            marketDistance: orderUpdate.marketDistance,
+            marketData: orderUpdate.marketData,
+            lastUpdate: orderUpdate.lastUpdate
+          };
+        }
+        return order;
+      });
+
+      return {
+        ...prevData,
+        pendingOrders: updatedOrders
+      };
+    });
+
+    setLastUpdate(new Date());
+  };
+
+  // Load data on mount and set up WebSocket listeners
   useEffect(() => {
+    // Load initial data
     loadEnhancedStatus();
 
-    // Poll every 15 seconds for live updates
-    const interval = setInterval(loadEnhancedStatus, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    // Set up WebSocket listeners for real-time updates
+    if (socket && socket.isConnected) {
+      console.log('🔌 Setting up real-time update listeners');
+
+      socket.subscribe('position_realtime_update', handlePositionRealtimeUpdate);
+      socket.subscribe('order_realtime_update', handleOrderRealtimeUpdate);
+
+      return () => {
+        socket.unsubscribe('position_realtime_update', handlePositionRealtimeUpdate);
+        socket.unsubscribe('order_realtime_update', handleOrderRealtimeUpdate);
+      };
+    } else {
+      console.warn('⚠️ WebSocket not available, falling back to polling');
+      // Fall back to polling if WebSocket not available
+      const interval = setInterval(loadEnhancedStatus, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [socket]);
 
   // Format currency
   const formatCurrency = (amount) => {

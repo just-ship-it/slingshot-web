@@ -1013,7 +1013,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
 
           {/* Enhanced Trading Status Panel */}
-          <EnhancedTradingStatus />
+          <EnhancedTradingStatus socket={socket} />
 
 
           {/* Account Overview and Live Quotes side by side */}
