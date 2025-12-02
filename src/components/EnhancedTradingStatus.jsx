@@ -241,7 +241,7 @@ const EnhancedTradingStatus = ({ socket }) => {
 
               const side = position.side?.toLowerCase();
               const isLong = side === 'long';
-              const quantity = Math.abs(position.signalContext?.quantity || position.quantity || 0);
+              const quantity = Math.abs(position.netPos || position.quantity || position.signalContext?.quantity || 0);
               const currentPrice = position.currentPrice;
               const entryPrice = position.entryPrice;
               const isAboveEntry = currentPrice && entryPrice && (
