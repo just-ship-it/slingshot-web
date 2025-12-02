@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 
-const EnhancedTradingStatus = ({ socket }) => {
+const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
   const [tradingData, setTradingData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [previousPositionCount, setPreviousPositionCount] = useState(0);
+  const [lastValidPrices, setLastValidPrices] = useState({});
 
   // Load enhanced trading status data
   const loadEnhancedStatus = async () => {
@@ -112,6 +114,26 @@ const EnhancedTradingStatus = ({ socket }) => {
       return () => clearInterval(interval);
     }
   }, [socket]);
+
+  // Monitor position count changes to detect closures and trigger account balance updates
+  useEffect(() => {
+    if (!tradingData?.openPositions) return;
+
+    const currentPositionCount = tradingData.openPositions.length;
+
+    // If positions decreased, likely a position was closed - refresh account balance
+    if (previousPositionCount > 0 && currentPositionCount < previousPositionCount) {
+      const closedPositions = previousPositionCount - currentPositionCount;
+      console.log(`🔔 Detected ${closedPositions} position(s) closed - requesting account balance update`);
+
+      // Trigger account balance refresh via callback
+      if (onPositionClosed) {
+        onPositionClosed();
+      }
+    }
+
+    setPreviousPositionCount(currentPositionCount);
+  }, [tradingData?.openPositions?.length, previousPositionCount, onPositionClosed]);
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -381,8 +403,14 @@ const EnhancedTradingStatus = ({ socket }) => {
               const isLong = action === 'long' || action === 'buy';
               const quantity = order.quantity || 0;
               const orderPrice = order.price;
-              // Use marketData.currentPrice if available, fallback to currentMarketData.close
-              const currentPrice = order.marketData?.currentPrice || order.currentMarketData?.close;
+              // Use marketData.currentPrice if available, fallback to cached price to prevent flickering
+              const rawCurrentPrice = order.marketData?.currentPrice || order.currentMarketData?.close;
+              const priceKey = order.baseSymbol || order.symbol;
+
+              // Use cached price as fallback to prevent "No Data" flickering
+              const currentPrice = (rawCurrentPrice && !isNaN(rawCurrentPrice))
+                ? rawCurrentPrice
+                : (lastValidPrices[priceKey] || null);
               const marketDistance = order.marketDistance;
 
               // Format trailing stop display from separate values
