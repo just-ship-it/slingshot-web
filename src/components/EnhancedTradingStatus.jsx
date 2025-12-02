@@ -117,7 +117,7 @@ const EnhancedTradingStatus = () => {
   return (
     <div className="bg-gray-800 rounded-lg p-6">
       {/* Trading Status Summary */}
-      <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-gray-700 rounded">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 p-3 bg-gray-700 rounded">
         <div className="text-center">
           <div className="text-xs text-gray-400">Open Positions</div>
           <div className="font-bold text-blue-400 text-lg">
@@ -204,9 +204,9 @@ const EnhancedTradingStatus = () => {
               return (
                 <div key={idx} className="bg-gray-800 border border-gray-600 rounded-lg overflow-hidden">
                   {/* Header Row */}
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-700 border-b border-gray-600">
-                    <div className="flex items-center gap-3">
-                      <div className={`flex items-center gap-2 font-semibold text-sm ${
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 bg-gray-700 border-b border-gray-600 gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <div className={`flex items-center gap-1 sm:gap-2 font-semibold text-sm ${
                         isLong ? 'text-green-400' : 'text-red-400'
                       }`}>
                         <span className={`w-2 h-2 rounded-full ${
@@ -217,13 +217,13 @@ const EnhancedTradingStatus = () => {
                       <span className="font-bold text-white text-lg">{position.symbol}</span>
                       <span className="text-gray-400 text-sm">×{quantity}</span>
                     </div>
-                    <div className={`font-semibold text-lg ${getPnLColor(position.unrealizedPnL)}`}>
+                    <div className={`font-semibold text-lg ${getPnLColor(position.unrealizedPnL)} sm:text-right`}>
                       {formatCurrency(position.unrealizedPnL)}
                     </div>
                   </div>
 
-                  {/* Price Grid */}
-                  <div className="grid grid-cols-5 gap-2 px-4 py-3">
+                  {/* Price Grid - Responsive: 2 cols on mobile, 5 on larger screens */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Entry</span>
                       <span className="text-sm font-medium text-gray-100">
@@ -345,8 +345,8 @@ const EnhancedTradingStatus = () => {
                     </div>
                   </div>
 
-                  {/* Price Grid */}
-                  <div className="grid grid-cols-5 gap-2 px-4 py-3">
+                  {/* Price Grid - Responsive: 2 cols on mobile, 5 on larger screens */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Order Price</span>
                       <span className="text-sm font-medium text-gray-100">

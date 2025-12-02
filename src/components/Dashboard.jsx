@@ -1035,22 +1035,11 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
               <div>
                 {/* Platform Status */}
                 <div className="bg-gray-800 rounded-lg p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold text-white">📡 Platform Status</h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowMarginModal(true)}
-                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-sm rounded transition-colors"
-                      >
-                        💰 Margins
-                      </button>
-                      <button
-                        onClick={() => setShowPositionSizingModal(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
-                      >
-                        ⚙️ Position Sizing
-                      </button>
-                      <div className="flex items-center space-x-2">
+                  <div className="mb-4">
+                    {/* First line: Platform Status title and trading toggle */}
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-lg font-semibold text-white">📡 Platform Status</h3>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
                         <span className="text-sm text-gray-300">Trading:</span>
                         <button
                           onClick={handleKillSwitchToggle}
@@ -1080,6 +1069,24 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                             'OFF'
                           )}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Second line: Margins and Position Sizing buttons aligned right */}
+                    <div className="flex justify-end">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowMarginModal(true)}
+                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0"
+                        >
+                          💰 Margins
+                        </button>
+                        <button
+                          onClick={() => setShowPositionSizingModal(true)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0"
+                        >
+                          ⚙️ Position Sizing
+                        </button>
                       </div>
                     </div>
                   </div>
