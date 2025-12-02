@@ -9,6 +9,28 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
   const [previousPositionCount, setPreviousPositionCount] = useState(0);
   const [lastValidPrices, setLastValidPrices] = useState({});
 
+  // Update price cache when valid prices are available
+  useEffect(() => {
+    if (tradingData?.pendingOrders) {
+      const newValidPrices = {};
+      let hasUpdates = false;
+
+      tradingData.pendingOrders.forEach(order => {
+        const priceKey = order.baseSymbol || order.symbol;
+        const rawCurrentPrice = order.marketData?.currentPrice || order.currentMarketData?.close;
+
+        if (rawCurrentPrice && !isNaN(rawCurrentPrice) && rawCurrentPrice !== lastValidPrices[priceKey]) {
+          newValidPrices[priceKey] = rawCurrentPrice;
+          hasUpdates = true;
+        }
+      });
+
+      if (hasUpdates) {
+        setLastValidPrices(prev => ({ ...prev, ...newValidPrices }));
+      }
+    }
+  }, [tradingData?.pendingOrders]);
+
   // Load enhanced trading status data
   const loadEnhancedStatus = async () => {
     try {
