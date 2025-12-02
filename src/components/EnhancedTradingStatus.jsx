@@ -302,14 +302,15 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
               let trailingActivationDistance = null;
 
               if (trailingOffset && trailingTrigger && currentPrice && entryPrice) {
-                // Calculate how far price needs to move to activate trailing stop
-                const pointsFromEntry = Math.abs(currentPrice - entryPrice);
-                const pointsToActivation = Math.max(0, trailingTrigger - pointsFromEntry);
-
                 // Calculate actual activation level
                 const activationLevel = isLong ?
                   entryPrice + trailingTrigger :
                   entryPrice - trailingTrigger;
+
+                // Calculate how far price needs to move to activate trailing stop
+                const pointsToActivation = isLong ?
+                  Math.max(0, activationLevel - currentPrice) :
+                  Math.max(0, currentPrice - activationLevel);
 
                 trailingDisplay = `${trailingOffset}pt / ${trailingTrigger}pt`;
                 if (pointsToActivation > 0) {
