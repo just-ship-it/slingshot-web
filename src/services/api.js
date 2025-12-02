@@ -319,19 +319,38 @@ export const api = {
     throw new Error('Relay testing not needed - webhooks handled by monitoring service');
   },
 
-  // Kill switch endpoints
+  // Trading control endpoints
   async getKillSwitchStatus() {
-    // Check for critical status in services
-    const services = await apiClient.get('/api/services');
-    const criticalServices = services.filter(s => s.status !== 'running');
-    return {
-      enabled: criticalServices.length > 0,
-      reason: criticalServices.length > 0 ? 'Service issues detected' : null
-    };
+    try {
+      const response = await apiClient.get('/api/trading/status');
+      return {
+        tradingEnabled: response.enabled,
+        status: response.enabled ? 'enabled' : 'disabled',
+        details: response
+      };
+    } catch (error) {
+      console.error('Failed to get trading status:', error);
+      return {
+        tradingEnabled: false,
+        status: 'unknown',
+        error: error.message
+      };
+    }
   },
 
   async setKillSwitch(enabled, reason = null) {
-    throw new Error('Kill switch control not implemented in monitoring service');
+    try {
+      const endpoint = enabled ? '/api/trading/enable' : '/api/trading/disable';
+      const response = await apiClient.post(endpoint, { reason });
+      return {
+        tradingEnabled: enabled,
+        status: response.status,
+        message: response.status
+      };
+    } catch (error) {
+      console.error('Failed to set trading status:', error);
+      throw new Error(`Failed to ${enabled ? 'enable' : 'disable'} trading: ${error.message}`);
+    }
   },
 
   // Position sizing endpoints

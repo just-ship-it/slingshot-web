@@ -216,9 +216,8 @@ function App() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <h1 className="text-2xl font-bold text-blue-400">
-              🚀 Slingshot
+              Slingshot
             </h1>
-            <span className="text-sm text-gray-400">AutoTrading Platform</span>
 
             {/* Navigation Tabs */}
             <nav className="flex space-x-2 ml-8">

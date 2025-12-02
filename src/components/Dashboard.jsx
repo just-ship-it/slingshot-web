@@ -1010,102 +1010,16 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       {/* Main Content Area - 2/3 width on desktop, full width on mobile */}
       <div className="flex-[2] overflow-y-auto">
         <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-          {/* Header with refresh button */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
-            <div className="w-full sm:w-auto">
-              <h2 className="text-xl sm:text-2xl font-bold text-white">Trading Dashboard</h2>
-              <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-4">
-                <p className="text-sm sm:text-base text-gray-400 truncate">
-                  Account: {account?.name || 'No account'} {account?.id ? `(${account.id})` : ''}
-                </p>
-                <div className="flex items-center space-x-2">
-                  <span className={getStatusColor(tradovateStatus)}>
-                    {getStatusIcon(tradovateStatus)}
-                  </span>
-                  <span className={`text-sm ${getStatusColor(tradovateStatus)}`}>
-                    Tradovate {tradovateStatus}
-                  </span>
-                </div>
-              </div>
-              {lastUpdate && (
-                <p className="text-sm text-gray-500">
-                  Last updated: {lastUpdate.toLocaleTimeString()}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
-              {/* Kill Switch */}
-              <div className={`p-2 sm:p-3 rounded-lg border-2 w-full sm:w-auto ${tradingEnabled ? 'bg-red-900/20 border-red-500' : 'bg-gray-800 border-gray-600'}`}>
-                <div className="flex items-center justify-between sm:space-x-3">
-                  <div>
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Trading Status
-                    </div>
-                    <div className={`font-bold text-sm sm:text-base ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                      {tradingEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleKillSwitchToggle}
-                    disabled={isKillSwitchLoading}
-                    className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition-all text-sm sm:text-base ${
-                      tradingEnabled
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    } disabled:opacity-50 min-w-[80px]`}
-                  >
-                    {isKillSwitchLoading ? (
-                      <span className="animate-spin">⏳</span>
-                    ) : tradingEnabled ? (
-                      'DISABLE'
-                    ) : (
-                      'ENABLE'
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Re-sync Button */}
-              <button
-                onClick={handleReSync}
-                disabled={isReSyncing}
-                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                title="Force fresh sync with Tradovate API"
-              >
-                <span className={isReSyncing ? 'animate-spin' : ''}>🔄</span>
-                <span>{isReSyncing ? 'Syncing...' : 'Re-sync'}</span>
-              </button>
-
-              {/* Refresh Button */}
-              <button
-                onClick={handleRefresh}
-                disabled={isLoading || isTradovateChecking}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base"
-              >
-                <span className={isLoading || isTradovateChecking ? 'animate-spin' : ''}>🔄</span>
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-
-              {/* Activity Toggle Button - Mobile/Desktop */}
-              <button
-                onClick={() => setShowActivitySidebar(!showActivitySidebar)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base lg:hidden"
-              >
-                <span>📨</span>
-                <span className="hidden sm:inline">Activity</span>
-              </button>
-            </div>
-          </div>
 
 
           {/* Enhanced Trading Status Panel */}
           <EnhancedTradingStatus />
 
 
-          {/* Account Overview - show when account is available (cached or live) */}
+          {/* Account Overview and Live Quotes side by side */}
           {account && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 space-y-6">
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <AccountInfo
                   account={account}
                   summary={accountSummary}
@@ -1116,7 +1030,9 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                   isLoading={false}
                 />
               </div>
-              <div className="lg:col-span-2">
+
+              {/* Platform Status - Full Width */}
+              <div>
                 {/* Platform Status */}
                 <div className="bg-gray-800 rounded-lg p-6">
                   <div className="flex justify-between items-center mb-4">
@@ -1134,6 +1050,37 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                       >
                         ⚙️ Position Sizing
                       </button>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-300">Trading:</span>
+                        <button
+                          onClick={handleKillSwitchToggle}
+                          disabled={isKillSwitchLoading}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                            tradingEnabled ? 'bg-green-600' : 'bg-red-600'
+                          }`}
+                          role="switch"
+                          aria-checked={tradingEnabled}
+                          aria-label={`Trading is currently ${tradingEnabled ? 'enabled' : 'disabled'}`}
+                        >
+                          <span className="sr-only">Toggle trading</span>
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+                              tradingEnabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                        <span className={`text-xs font-medium ${
+                          tradingEnabled ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {isKillSwitchLoading ? (
+                            <span className="animate-spin">⏳</span>
+                          ) : tradingEnabled ? (
+                            'ON'
+                          ) : (
+                            'OFF'
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1206,7 +1153,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                 </div>
               </div>
             </div>
-          </div>
+            </>
           )}
 
           {/* Recent Orders History */}

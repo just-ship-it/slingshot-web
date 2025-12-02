@@ -83,13 +83,7 @@ const EnhancedTradingStatus = () => {
 
   if (isLoading && !tradingData) {
     return (
-      <div className="bg-gray-900 border-2 border-blue-500 rounded-lg p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <span className="text-2xl">🎯</span>
-            Enhanced Trading Status
-          </h3>
-        </div>
+      <div className="bg-gray-800 rounded-lg p-6">
         <div className="text-center text-gray-500 py-8">
           <div className="text-2xl mb-2">⏳</div>
           <div>Loading enhanced trading status...</div>
@@ -100,13 +94,7 @@ const EnhancedTradingStatus = () => {
 
   if (error) {
     return (
-      <div className="bg-gray-900 border-2 border-red-500 rounded-lg p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <span className="text-2xl">🎯</span>
-            Enhanced Trading Status
-          </h3>
-        </div>
+      <div className="bg-gray-800 rounded-lg p-6">
         <div className="text-center text-red-400 py-4">
           <div className="text-2xl mb-2">❌</div>
           <div>Error loading enhanced trading status</div>
@@ -127,28 +115,9 @@ const EnhancedTradingStatus = () => {
   const hasActiveItems = hasPendingOrders || hasOpenPositions;
 
   return (
-    <div className="bg-gray-900 border-2 border-blue-500 rounded-lg p-4">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <span className="text-2xl">🎯</span>
-          Enhanced Trading Status
-        </h3>
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-gray-400">
-            Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : 'Loading...'}
-          </div>
-          <button
-            onClick={loadEnhancedStatus}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-2 py-1 text-xs rounded transition-colors"
-          >
-            {isLoading ? '⏳' : '🔄'}
-          </button>
-        </div>
-      </div>
-
+    <div className="bg-gray-800 rounded-lg p-6">
       {/* Trading Status Summary */}
-      <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-gray-800 rounded">
+      <div className="grid grid-cols-4 gap-3 mb-4 p-3 bg-gray-700 rounded">
         <div className="text-center">
           <div className="text-xs text-gray-400">Open Positions</div>
           <div className="font-bold text-blue-400 text-lg">
@@ -162,15 +131,20 @@ const EnhancedTradingStatus = () => {
           </div>
         </div>
         <div className="text-center">
-          <div className="text-xs text-gray-400">Daily P&L</div>
-          <div className={`font-bold text-lg ${getPnLColor(tradingData?.stats?.dailyPnL || 0)}`}>
-            {formatCurrency(tradingData?.stats?.dailyPnL || 0)}
-          </div>
-        </div>
-        <div className="text-center">
           <div className="text-xs text-gray-400">Daily Trades</div>
           <div className="font-bold text-lg text-gray-400">
             {tradingData?.stats?.dailyTrades || 0}
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-400">Last Updated</div>
+          <div className="font-bold text-lg text-gray-300">
+            {lastUpdate ? lastUpdate.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true
+            }) : 'Loading...'}
           </div>
         </div>
       </div>
@@ -453,9 +427,6 @@ const EnhancedTradingStatus = () => {
           <div className="text-lg font-semibold mb-2">No Active Trading Activity</div>
           <div className="text-sm">
             No pending orders or open positions from trade signals
-          </div>
-          <div className="text-xs text-gray-400 mt-2">
-            Status updates automatically every 15 seconds
           </div>
         </div>
       )}
