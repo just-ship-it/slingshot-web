@@ -57,6 +57,9 @@ function App() {
     setIsAuthenticated(false);
     setAccounts([]);
     setSelectedAccount(null);
+    // Clear saved account selection
+    localStorage.removeItem('slingshot_selected_account');
+    console.log('🗑️ Cleared saved account selection from localStorage');
   };
 
   // Memoized WebSocket callbacks to prevent connection loops
@@ -122,22 +125,41 @@ function App() {
       const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
       setAccounts(accounts);
 
-      // Select default account or first available account
+      // Select account with localStorage persistence
       if (accounts.length > 0) {
-        // Try to find a default account
-        const defaultAccount = accounts.find(account =>
-          account.id === '33316485' || account.id === 33316485 ||
-          String(account.id) === '33316485'
-        );
-        console.log('🔍 Looking for default account in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
-        console.log('🎯 Found default account:', defaultAccount);
-        if (defaultAccount) {
-          setSelectedAccount(defaultAccount);
-          console.log('✅ Selected default account:', defaultAccount.id, defaultAccount.name);
-        } else {
-          // Fallback to first account if default not found
-          setSelectedAccount(accounts[0]);
-          console.log('⚠️ Default account not found, using first account:', accounts[0].id, accounts[0].name);
+        // First, try to load previously selected account from localStorage
+        const savedAccountId = localStorage.getItem('slingshot_selected_account');
+        let targetAccount = null;
+
+        if (savedAccountId) {
+          targetAccount = accounts.find(account =>
+            String(account.id) === String(savedAccountId)
+          );
+          console.log('💾 Found saved account in localStorage:', savedAccountId, 'Found:', !!targetAccount);
+        }
+
+        // If no saved account or saved account not found, use default fallback logic
+        if (!targetAccount) {
+          // Try to find a default account
+          targetAccount = accounts.find(account =>
+            account.id === '33316485' || account.id === 33316485 ||
+            String(account.id) === '33316485'
+          );
+          console.log('🔍 Looking for default account in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
+          console.log('🎯 Found default account:', targetAccount);
+
+          if (!targetAccount) {
+            // Final fallback to first account
+            targetAccount = accounts[0];
+            console.log('⚠️ Using first account as final fallback:', targetAccount.id, targetAccount.name);
+          }
+        }
+
+        if (targetAccount) {
+          setSelectedAccount(targetAccount);
+          // Save to localStorage for persistence
+          localStorage.setItem('slingshot_selected_account', String(targetAccount.id));
+          console.log('✅ Selected account:', targetAccount.id, targetAccount.name);
         }
       }
 
@@ -154,6 +176,11 @@ function App() {
 
   const handleAccountChange = (account) => {
     setSelectedAccount(account);
+    // Save to localStorage for persistence
+    if (account) {
+      localStorage.setItem('slingshot_selected_account', String(account.id));
+      console.log('💾 Saved account selection to localStorage:', account.id, account.name);
+    }
     // Subscribe to account-specific updates
     if (socket && account) {
       socket.emit('subscribe_account', account.id);
@@ -296,18 +323,38 @@ function App() {
             onAccountsLoaded={(loadedAccounts) => {
               setAccounts(loadedAccounts);
               if (loadedAccounts.length > 0 && !selectedAccount) {
-                // Try to find the default account
-                const defaultAccount = loadedAccounts.find(account =>
-                  account.id === '33316485' || account.id === 33316485 ||
-                  String(account.id) === '33316485'
-                );
-                if (defaultAccount) {
-                  setSelectedAccount(defaultAccount);
-                  console.log('✅ Dashboard loaded default account:', defaultAccount.id, defaultAccount.name);
-                } else {
-                  // Fallback to first account if default not found
-                  setSelectedAccount(loadedAccounts[0]);
-                  console.log('⚠️ Dashboard: Default account not found, using first account:', loadedAccounts[0].id, loadedAccounts[0].name);
+                // Use the same localStorage persistence logic as loadAccountData
+                const savedAccountId = localStorage.getItem('slingshot_selected_account');
+                let targetAccount = null;
+
+                if (savedAccountId) {
+                  targetAccount = loadedAccounts.find(account =>
+                    String(account.id) === String(savedAccountId)
+                  );
+                  console.log('💾 Dashboard: Found saved account in localStorage:', savedAccountId, 'Found:', !!targetAccount);
+                }
+
+                // If no saved account or saved account not found, use default fallback logic
+                if (!targetAccount) {
+                  // Try to find the default account
+                  targetAccount = loadedAccounts.find(account =>
+                    account.id === '33316485' || account.id === 33316485 ||
+                    String(account.id) === '33316485'
+                  );
+                  console.log('🎯 Dashboard: Found default account:', targetAccount);
+
+                  if (!targetAccount) {
+                    // Final fallback to first account
+                    targetAccount = loadedAccounts[0];
+                    console.log('⚠️ Dashboard: Using first account as final fallback:', targetAccount.id, targetAccount.name);
+                  }
+                }
+
+                if (targetAccount) {
+                  setSelectedAccount(targetAccount);
+                  // Save to localStorage for persistence
+                  localStorage.setItem('slingshot_selected_account', String(targetAccount.id));
+                  console.log('✅ Dashboard: Selected account:', targetAccount.id, targetAccount.name);
                 }
               }
             }}
