@@ -55,6 +55,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [lastPollingUpdate, setLastPollingUpdate] = useState(null);
   const [criticalStatusInterval, setCriticalStatusInterval] = useState(null);
   const [isReSyncing, setIsReSyncing] = useState(false);
+  const [isFullSyncing, setIsFullSyncing] = useState(false);
 
   // Check microservice health via monitoring service API
   const checkMicroserviceHealth = async () => {
@@ -945,6 +946,42 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     }
   };
 
+  const handleFullSync = async (dryRun = false) => {
+    setIsFullSyncing(true);
+    try {
+      const response = await api.fullSync({ dryRun });
+
+      if (response.success) {
+        const { stats } = response;
+        // Add success message to activity log with stats
+        setRelayLogs(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          type: 'system',
+          data: `🔄 Full Tradovate sync ${dryRun ? '(DRY RUN) ' : ''}completed - ${stats.ordersReconciled} orders, ${stats.positionsReconciled} positions reconciled, ${stats.signalMappingsRemoved} stale mappings cleaned`
+        }].slice(0, 100));
+
+        // If it was a real sync (not dry run), refresh dashboard data
+        if (!dryRun) {
+          setTimeout(() => {
+            loadCriticalStatus();
+            if (tradovateStatus === 'connected') {
+              loadDashboardData();
+            }
+          }, 1500); // Slightly longer delay for full sync
+        }
+      }
+    } catch (error) {
+      console.error('Full sync failed:', error);
+      setRelayLogs(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        type: 'stderr',
+        data: `❌ Full Tradovate sync failed: ${error.message}`
+      }].slice(0, 100));
+    } finally {
+      setIsFullSyncing(false);
+    }
+  };
+
   const handleRefresh = () => {
     checkTradovateConnection();
     checkRelayStatus();
@@ -1075,7 +1112,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                       </div>
                     </div>
 
-                    {/* Second line: Margins and Position Sizing buttons aligned right */}
+                    {/* Second line: Margins, Position Sizing, and Full Sync buttons aligned right */}
                     <div className="flex justify-end">
                       <div className="flex gap-2">
                         <button
@@ -1089,6 +1126,18 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                           className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0"
                         >
                           ⚙️ Position Sizing
+                        </button>
+                        <button
+                          onClick={() => handleFullSync(false)}
+                          disabled={isFullSyncing || tradovateStatus !== 'connected'}
+                          className={`px-3 py-1 text-sm rounded transition-colors flex-shrink-0 ${
+                            isFullSyncing || tradovateStatus !== 'connected'
+                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                              : 'bg-purple-600 hover:bg-purple-700 text-white'
+                          }`}
+                          title={tradovateStatus !== 'connected' ? 'Tradovate must be connected' : 'Reconcile orders/positions with Tradovate'}
+                        >
+                          {isFullSyncing ? '⏳ Syncing...' : '🔄 Full Sync'}
                         </button>
                       </div>
                     </div>

@@ -269,6 +269,22 @@ export const api = {
     }
   },
 
+  async fullSync(options = {}) {
+    try {
+      console.log('🔄 Triggering full Tradovate sync...', options);
+      // Call the tradovate-service sync endpoint via monitoring service proxy
+      const response = await apiClient.post('/api/proxy/tradovate/sync/full', {
+        dryRun: options.dryRun || false,
+        reason: options.reason || 'manual_dashboard_request'
+      });
+      console.log('✅ Full sync response:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ Full sync failed:', error);
+      throw error;
+    }
+  },
+
   // Account-specific endpoints
   async getAccountPositions(accountId) {
     return await apiClient.get(`/api/positions?accountId=${accountId}`);
