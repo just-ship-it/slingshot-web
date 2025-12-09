@@ -360,7 +360,7 @@ function App() {
             }}
           />
         ) : (
-          <TestTrading />
+          <TestTrading socket={socket} />
         )}
       </main>
     </div>
