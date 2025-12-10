@@ -246,6 +246,10 @@ export const api = {
     return await apiClient.get('/api/services');
   },
 
+  async restartService(serviceName) {
+    return await apiClient.post(`/api/services/${serviceName}/restart`);
+  },
+
   // Market data / quotes
   async getQuotes() {
     try {

@@ -568,6 +568,47 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       socket.socket.on('polling_mode_changed', handlePollingModeChanged);
       socket.socket.on('rate_limit_warning', handleRateLimitWarning);
 
+      // Service restart events
+      const handleServiceRestartInitiated = (data) => {
+        console.log('Service restart initiated:', data);
+        setMicroserviceHealth(prev => ({
+          ...prev,
+          [data.service]: {
+            ...prev[data.service],
+            status: 'restarting'
+          }
+        }));
+      };
+
+      const handleServiceRestartSuccess = (data) => {
+        console.log('Service restart success:', data);
+        setRelayLogs(prev => [...prev, {
+          timestamp: data.timestamp,
+          type: 'system',
+          data: `✅ ${data.service.replace('-', ' ')} restart initiated successfully`
+        }].slice(0, 100));
+      };
+
+      const handleServiceRestartFailed = (data) => {
+        console.log('Service restart failed:', data);
+        setMicroserviceHealth(prev => ({
+          ...prev,
+          [data.service]: {
+            ...prev[data.service],
+            status: 'unhealthy'
+          }
+        }));
+        setRelayLogs(prev => [...prev, {
+          timestamp: data.timestamp,
+          type: 'stderr',
+          data: `❌ Failed to restart ${data.service.replace('-', ' ')}: ${data.error}`
+        }].slice(0, 100));
+      };
+
+      socket.socket.on('service_restart_initiated', handleServiceRestartInitiated);
+      socket.socket.on('service_restart_success', handleServiceRestartSuccess);
+      socket.socket.on('service_restart_failed', handleServiceRestartFailed);
+
       return () => {
         socket.socket.off('relay_status_change', handleRelayStatusChange);
         socket.socket.off('relay_started', handleRelayStarted);
@@ -588,6 +629,9 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('account_data_updated', handleAccountDataUpdated);
         socket.socket.off('polling_mode_changed', handlePollingModeChanged);
         socket.socket.off('rate_limit_warning', handleRateLimitWarning);
+        socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
+        socket.socket.off('service_restart_success', handleServiceRestartSuccess);
+        socket.socket.off('service_restart_failed', handleServiceRestartFailed);
       };
     }
   }, [socket]);
@@ -982,6 +1026,88 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     }
   };
 
+  const handleServiceRestart = async (serviceName) => {
+    // Show confirmation dialog
+    const displayName = serviceName.replace('-', ' ');
+    const confirmed = window.confirm(
+      `⚠️ Are you sure you want to restart the ${displayName}?\n\n` +
+      `This will cause temporary service interruption.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      // Update the service status to restarting
+      setMicroserviceHealth(prev => ({
+        ...prev,
+        [serviceName]: {
+          ...prev[serviceName],
+          status: 'restarting'
+        }
+      }));
+
+      // Add to activity log immediately
+      setRelayLogs(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        type: 'system',
+        data: `🔄 Restarting ${displayName} (requested by dashboard)`
+      }].slice(0, 100));
+
+      // Call restart API
+      const response = await api.restartService(serviceName);
+
+      if (response.success) {
+        // Add success message to activity log
+        setRelayLogs(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          type: 'system',
+          data: `✅ ${displayName} restart initiated successfully`
+        }].slice(0, 100));
+
+        // For monitoring-service, show special message since we'll lose connection
+        if (serviceName === 'monitoring-service') {
+          setRelayLogs(prev => [...prev, {
+            timestamp: new Date().toISOString(),
+            type: 'system',
+            data: `📡 Monitoring service restarting - dashboard will reconnect automatically`
+          }].slice(0, 100));
+        }
+
+        // Start checking service health more frequently during restart
+        setTimeout(() => {
+          checkMicroserviceHealth();
+        }, 5000);
+
+        setTimeout(() => {
+          checkMicroserviceHealth();
+        }, 15000);
+
+      }
+    } catch (error) {
+      console.error(`Failed to restart ${serviceName}:`, error);
+
+      // Reset status on error
+      setMicroserviceHealth(prev => ({
+        ...prev,
+        [serviceName]: {
+          ...prev[serviceName],
+          status: 'unhealthy'
+        }
+      }));
+
+      // Add error to activity log
+      setRelayLogs(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        type: 'stderr',
+        data: `❌ Failed to restart ${displayName}: ${error.message}`
+      }].slice(0, 100));
+
+      alert(`Failed to restart ${displayName}: ${error.message}`);
+    }
+  };
+
   const handleRefresh = () => {
     checkTradovateConnection();
     checkRelayStatus();
@@ -1179,17 +1305,19 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
                     {/* Microservices Health Grid */}
                     {Object.entries(microserviceHealth).map(([serviceName, health]) => (
-                      <div key={serviceName} className="bg-gray-700 p-4 rounded">
+                      <div key={serviceName} className="bg-gray-700 p-4 rounded relative">
                         <h4 className="font-semibold text-white mb-2 capitalize">
                           {serviceName.replace('-', ' ')}
                         </h4>
                         <p className={`text-sm font-bold ${
                           health.status === 'healthy' ? 'text-green-400' :
                           health.status === 'unhealthy' ? 'text-red-400' :
+                          health.status === 'restarting' ? 'text-yellow-400' :
                           'text-yellow-400'
                         }`}>
                           {health.status === 'healthy' ? '🟢 Healthy' :
                            health.status === 'unhealthy' ? '🔴 Down' :
+                           health.status === 'restarting' ? '🔄 Restarting' :
                            '🟡 Unknown'}
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
@@ -1197,6 +1325,21 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                             `Last check: ${health.lastChecked.toLocaleTimeString()}` :
                             'Not checked'}
                         </p>
+                        {/* Show restart button only in production */}
+                        {process.env.REACT_APP_ENVIRONMENT === 'production' && (
+                          <button
+                            onClick={() => handleServiceRestart(serviceName)}
+                            disabled={health.status === 'restarting'}
+                            className={`absolute top-2 right-2 px-2 py-1 text-xs rounded transition-colors ${
+                              health.status === 'restarting'
+                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                            }`}
+                            title={health.status === 'restarting' ? 'Restart in progress...' : `Restart ${serviceName}`}
+                          >
+                            {health.status === 'restarting' ? '⏳' : '🔄'}
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
