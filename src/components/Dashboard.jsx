@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AccountInfo from './AccountInfo';
 import TradesList from './TradesList';
+import SignalsList from './SignalsList';
 import QuotesPanel from './QuotesPanel';
 import EnhancedTradingStatus from './EnhancedTradingStatus';
 import { api } from '../services/api';
@@ -9,6 +10,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [accountSummary, setAccountSummary] = useState(null);
   const [positions, setPositions] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [signals, setSignals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [tradovateStatus, setTradovateStatus] = useState('disabled');
@@ -609,6 +611,14 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       socket.socket.on('service_restart_success', handleServiceRestartSuccess);
       socket.socket.on('service_restart_failed', handleServiceRestartFailed);
 
+      // Signal events
+      const handleSignalReceived = (signalData) => {
+        console.log('📡 Signal received:', signalData);
+        setSignals(prev => [signalData, ...prev.slice(0, 49)]); // Keep last 50 signals
+      };
+
+      socket.socket.on('signal_received', handleSignalReceived);
+
       return () => {
         socket.socket.off('relay_status_change', handleRelayStatusChange);
         socket.socket.off('relay_started', handleRelayStarted);
@@ -632,6 +642,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
         socket.socket.off('service_restart_success', handleServiceRestartSuccess);
         socket.socket.off('service_restart_failed', handleServiceRestartFailed);
+        socket.socket.off('signal_received', handleSignalReceived);
       };
     }
   }, [socket]);
@@ -791,6 +802,17 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     }
   };
 
+  const loadSignals = async () => {
+    try {
+      const signalsData = await api.getSignals();
+      setSignals(signalsData || []);
+      console.log('📡 Loaded signals:', signalsData?.length || 0);
+    } catch (error) {
+      console.error('Failed to load signals:', error.message);
+      // Don't fail the dashboard if signals fail
+    }
+  };
+
   const loadDashboardData = async () => {
     // Prevent concurrent loading
     if (isLoading) {
@@ -809,6 +831,9 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
       // Load initial quotes
       await loadQuotes();
+
+      // Load signals
+      await loadSignals();
 
       // Load positions/orders together (they're related)
       await loadOrdersAndPositions();
@@ -1358,12 +1383,15 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
             </>
           )}
 
-          {/* Recent Orders History */}
-          <TradesList
-            title="Recent Orders History (Last 10)"
-            data={orders.slice(0, 10)}
-            type="orders"
-            onRefresh={loadOrdersAndPositions}
+          {/* Recent Signals */}
+          <SignalsList
+            title="Recent Signals"
+            data={signals.slice(0, 10)}
+            onRefresh={loadSignals}
+            onViewSignal={(signal) => {
+              setSelectedJsonData(signal);
+              setShowJsonModal(true);
+            }}
             showAll={false}
           />
 

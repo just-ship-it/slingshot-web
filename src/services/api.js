@@ -241,6 +241,10 @@ export const api = {
     return await apiClient.get(`/api/activity?limit=${limit}`);
   },
 
+  async getSignals(limit = 50) {
+    return await apiClient.get(`/api/signals?limit=${limit}`);
+  },
+
   // Service monitoring
   async getServices() {
     return await apiClient.get('/api/services');
