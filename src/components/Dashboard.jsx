@@ -3,6 +3,7 @@ import AccountInfo from './AccountInfo';
 import TradesList from './TradesList';
 import SignalsList from './SignalsList';
 import QuotesPanel from './QuotesPanel';
+import NewsPanel from './NewsPanel';
 import EnhancedTradingStatus from './EnhancedTradingStatus';
 import { api } from '../services/api';
 
@@ -1393,6 +1394,12 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
               setShowJsonModal(true);
             }}
             showAll={false}
+          />
+
+          {/* Market News Panel */}
+          <NewsPanel
+            socket={socket}
+            isLoading={isLoading}
           />
 
         </div>
