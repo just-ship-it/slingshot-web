@@ -9,8 +9,10 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
       BTC: quotes.BTC?.close,
       MNQ: quotes.MNQ?.close,
       NQ: quotes.NQ?.close,
+      QQQ: quotes.QQQ?.close,
       MES: quotes.MES?.close,
       ES: quotes.ES?.close,
+      SPY: quotes.SPY?.close,
       allKeys: Object.keys(quotes),
       quotesObjectReference: quotes,
       timestamp: new Date().toISOString()
@@ -20,8 +22,27 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
   // Additional debug: Log every render
   console.log('🔄 QuotesPanel rendering with quotes keys:', Object.keys(quotes));
 
-  // Supported symbols that we want to display
-  const supportedSymbols = ['MNQ', 'NQ', 'MES', 'ES', 'BTC'];
+  // Organize symbols by market category
+  const marketGroups = [
+    {
+      title: "📊 Nasdaq/Tech",
+      symbols: ['MNQ', 'NQ', 'QQQ'],
+      color: "text-blue-400"
+    },
+    {
+      title: "📈 S&P 500",
+      symbols: ['MES', 'ES', 'SPY'],
+      color: "text-green-400"
+    },
+    {
+      title: "₿ Crypto",
+      symbols: ['BTC'],
+      color: "text-orange-400"
+    }
+  ];
+
+  // All supported symbols for compatibility
+  const supportedSymbols = marketGroups.flatMap(group => group.symbols);
 
   // Price change calculation removed - showing current prices only
 
@@ -62,109 +83,125 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
         </div>
       </div>
 
-      <div className="space-y-3">
-        {supportedSymbols.map(symbol => {
-          // Get quote data for this symbol - directly access by base symbol key
-          const quote = quotes[symbol];
+      <div className="space-y-4">
+        {marketGroups.map((group, groupIndex) => (
+          <div key={group.title} className="space-y-2">
+            {/* Group Header */}
+            <div className="flex items-center space-x-2 pb-2">
+              <h4 className={`text-sm font-semibold ${group.color}`}>
+                {group.title}
+              </h4>
+              <div className="flex-1 h-px bg-gray-700"></div>
+            </div>
 
-          const isExpanded = expandedSymbol === symbol;
+            {/* Group Symbols */}
+            <div className="space-y-2">
+              {group.symbols.map(symbol => {
+                // Get quote data for this symbol - directly access by base symbol key
+                const quote = quotes[symbol];
+                const isExpanded = expandedSymbol === symbol;
 
-          return (
-            <div key={symbol} className="border border-gray-700 rounded-lg overflow-hidden">
-              {/* Main Quote Row */}
-              <div
-                className="flex items-center justify-between p-3 bg-gray-750 hover:bg-gray-700 cursor-pointer transition-colors"
-                onClick={() => setExpandedSymbol(isExpanded ? null : symbol)}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="font-mono font-semibold text-white text-sm">
-                    {symbol}
-                  </span>
-                  {quote?.timestamp && (
-                    <span className="text-xs text-gray-400">
-                      {new Date(quote.timestamp).toLocaleTimeString()}
-                    </span>
-                  )}
-                </div>
+                return (
+                  <div key={symbol} className="border border-gray-700 rounded-lg overflow-hidden">
+                    {/* Main Quote Row */}
+                    <div
+                      className="flex items-center justify-between p-3 bg-gray-750 hover:bg-gray-700 cursor-pointer transition-colors"
+                      onClick={() => setExpandedSymbol(isExpanded ? null : symbol)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="font-mono font-semibold text-white text-sm">
+                          {symbol}
+                        </span>
+                      </div>
 
-                <div className="flex items-center space-x-4">
-                  {quote ? (
-                    <>
-                      <div className="text-right">
-                        <div className="text-white font-semibold">
-                          {quote.close?.toFixed(2) || '—'}
-                        </div>
-                        {quote.previousClose && (
-                          <div className={`text-xs ${quote.close > quote.previousClose ? 'text-green-400' : quote.close < quote.previousClose ? 'text-red-400' : 'text-gray-400'}`}>
-                            {quote.close > quote.previousClose ? '▲' : quote.close < quote.previousClose ? '▼' : ''}
-                            {Math.abs(quote.close - quote.previousClose).toFixed(2)}
-                          </div>
+                      <div className="flex items-center space-x-4">
+                        {quote ? (
+                          <>
+                            <div className="text-right">
+                              <div className="text-white font-semibold">
+                                {quote.close?.toFixed(2) || '—'}
+                              </div>
+                              {quote.previousClose && (
+                                <div className={`text-xs ${quote.close > quote.previousClose ? 'text-green-400' : quote.close < quote.previousClose ? 'text-red-400' : 'text-gray-400'}`}>
+                                  {quote.close > quote.previousClose ? '▲' : quote.close < quote.previousClose ? '▼' : ''}
+                                  {Math.abs(quote.close - quote.previousClose).toFixed(2)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-gray-400">
+                              {isExpanded ? '▼' : '▶'}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-gray-500 text-sm">No Data</div>
                         )}
                       </div>
-                      <div className="text-gray-400">
-                        {isExpanded ? '▼' : '▶'}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-gray-500 text-sm">No Data</div>
-                  )}
-                </div>
-              </div>
+                    </div>
 
-              {/* Expanded Details */}
-              {isExpanded && quote && (
-                <div className="p-3 bg-gray-800 border-t border-gray-700">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-400 mb-1">Open</div>
-                      <div className="text-white font-mono">
-                        {quote.open?.toFixed(2) || '—'}
+                    {/* Expanded Details */}
+                    {isExpanded && quote && (
+                      <div className="p-3 bg-gray-800 border-t border-gray-700">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <div className="text-gray-400 mb-1">Open</div>
+                            <div className="text-white font-mono">
+                              {quote.open?.toFixed(2) || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400 mb-1">High</div>
+                            <div className="text-white font-mono text-green-400">
+                              {quote.high?.toFixed(2) || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400 mb-1">Low</div>
+                            <div className="text-white font-mono text-red-400">
+                              {quote.low?.toFixed(2) || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400 mb-1">Close</div>
+                            <div className="text-white font-mono">
+                              {quote.close?.toFixed(2) || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400 mb-1">Volume</div>
+                            <div className="text-white font-mono">
+                              {formatVolume(quote.volume)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-400 mb-1">Prev Close</div>
+                            <div className="text-white font-mono">
+                              {quote.previousClose?.toFixed(2) || '—'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-gray-700">
+                          {quote.symbol && (
+                            <div className="text-xs text-gray-400 mb-2">
+                              Contract: <span className="text-gray-300 font-mono">{quote.symbol}</span>
+                            </div>
+                          )}
+                          {quote.timestamp && (
+                            <div className="text-xs text-gray-400">
+                              Last Updated: <span className="text-gray-300 font-mono">
+                                {new Date(quote.timestamp).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">High</div>
-                      <div className="text-white font-mono text-green-400">
-                        {quote.high?.toFixed(2) || '—'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Low</div>
-                      <div className="text-white font-mono text-red-400">
-                        {quote.low?.toFixed(2) || '—'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Close</div>
-                      <div className="text-white font-mono">
-                        {quote.close?.toFixed(2) || '—'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Volume</div>
-                      <div className="text-white font-mono">
-                        {formatVolume(quote.volume)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Prev Close</div>
-                      <div className="text-white font-mono">
-                        {quote.previousClose?.toFixed(2) || '—'}
-                      </div>
-                    </div>
+                    )}
                   </div>
-
-                  {quote.symbol && (
-                    <div className="mt-3 pt-3 border-t border-gray-700">
-                      <div className="text-xs text-gray-400">
-                        Contract: <span className="text-gray-300 font-mono">{quote.symbol}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {Object.keys(quotes).length === 0 && (

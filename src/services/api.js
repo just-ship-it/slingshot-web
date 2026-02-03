@@ -264,6 +264,106 @@ export const api = {
     }
   },
 
+  // Candle history from signal-generator (for chart initialization)
+  async getCandles(count = 60) {
+    try {
+      return await apiClient.get(`/api/candles?count=${count}`);
+    } catch (error) {
+      console.log('Candle history not available:', error.message);
+      return null;
+    }
+  },
+
+  // GEX levels from signal-generator
+  async getGexLevels() {
+    try {
+      return await apiClient.get('/api/gex/levels');
+    } catch (error) {
+      console.log('GEX levels not available:', error.message);
+      return null;
+    }
+  },
+
+  // Refresh GEX levels - force recalculation
+  async refreshGexLevels() {
+    try {
+      return await apiClient.post('/api/gex/refresh');
+    } catch (error) {
+      console.error('Failed to refresh GEX levels:', error.message);
+      throw error;
+    }
+  },
+
+  // Tradier GEX levels from signal-generator
+  async getTradierGexLevels() {
+    try {
+      return await apiClient.get('/api/tradier/gex/levels');
+    } catch (error) {
+      console.log('Tradier GEX levels not available:', error.message);
+      return null;
+    }
+  },
+
+  // Refresh Tradier GEX levels - force recalculation (triggers WebSocket broadcast)
+  async refreshTradierGexLevels() {
+    try {
+      return await apiClient.post('/api/tradier/gex/refresh');
+    } catch (error) {
+      console.error('Failed to refresh Tradier GEX levels:', error.message);
+      throw error;
+    }
+  },
+
+  // Get Tradier service status
+  async getTradierStatus() {
+    try {
+      return await apiClient.get('/api/tradier/status');
+    } catch (error) {
+      console.log('Tradier status not available:', error.message);
+      return null;
+    }
+  },
+
+  // Get signal-generator detailed connection status
+  async getSignalGeneratorStatus() {
+    try {
+      return await apiClient.get('/api/signal-generator/status');
+    } catch (error) {
+      console.log('Signal generator status not available:', error.message);
+      return null;
+    }
+  },
+
+  // Strategy status from signal-generator (GEX Scalp strategy)
+  async getStrategyStatus() {
+    try {
+      return await apiClient.get('/api/strategy/gex-scalp/status');
+    } catch (error) {
+      console.log('Strategy status not available:', error.message);
+      return null;
+    }
+  },
+
+  // IV Skew data from signal-generator
+  async getIVSkew() {
+    try {
+      return await apiClient.get('/api/iv/skew');
+    } catch (error) {
+      console.log('IV skew not available:', error.message);
+      return null;
+    }
+  },
+
+  // IV Skew history from signal-generator
+  async getIVHistory() {
+    try {
+      return await apiClient.get('/api/iv/history');
+    } catch (error) {
+      console.log('IV history not available:', error.message);
+      return null;
+    }
+  },
+
   async reSync() {
     try {
       console.log('🔄 Calling reSync...');

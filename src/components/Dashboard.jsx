@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import AccountInfo from './AccountInfo';
+// import AccountInfo from './AccountInfo';
 import TradesList from './TradesList';
 import SignalsList from './SignalsList';
 import QuotesPanel from './QuotesPanel';
-import NewsPanel from './NewsPanel';
+import GexComparisonPanel from './GexComparisonPanel';
+import GexChart from './GexChart';
+// import GexRecoilStrategyPanel from './GexRecoilStrategyPanel';
+// import NewsPanel from './NewsPanel';
 import EnhancedTradingStatus from './EnhancedTradingStatus';
+import IVSkewPanel from './IVSkewPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
@@ -20,6 +24,12 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   const [criticalStatus, setCriticalStatus] = useState(null);
   const [criticalStatusError, setCriticalStatusError] = useState(null);
   const [quotes, setQuotes] = useState({});
+
+  // GEX data - shared between chart and panel
+  const [gexData, setGexData] = useState({ cboe: null, tradier: null });
+
+  // Strategy status from signal-generator
+  const [strategyStatus, setStrategyStatus] = useState(null);
 
   // Webhook relay state
   const [relayStatus, setRelayStatus] = useState({
@@ -51,6 +61,8 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
   // Microservice health state
   const [microserviceHealth, setMicroserviceHealth] = useState({});
+  const [signalGeneratorConnections, setSignalGeneratorConnections] = useState(null);
+  const [sgConnectionsExpanded, setSgConnectionsExpanded] = useState(false);
 
   // Live polling state
   const [pollingEnabled, setPollingEnabled] = useState(true);
@@ -92,6 +104,28 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     }
   };
 
+  // Fetch signal generator connection status
+  const fetchSignalGeneratorConnections = async () => {
+    try {
+      const data = await api.getSignalGeneratorStatus();
+      if (data) {
+        setSignalGeneratorConnections(data);
+      }
+    } catch (err) {
+      console.log('Signal generator status not available:', err.message);
+    }
+  };
+
+  // Format age helper for signal generator timestamps
+  const formatAge = (timestamp) => {
+    if (!timestamp) return 'Never';
+    const age = (Date.now() - new Date(timestamp).getTime()) / 1000;
+    if (age < 0) return 'Just now';
+    if (age < 60) return `${Math.floor(age)}s ago`;
+    if (age < 3600) return `${Math.floor(age / 60)}m ago`;
+    return `${Math.floor(age / 3600)}h ago`;
+  };
+
   // Load dashboard immediately, check connections in background
   useEffect(() => {
     // Set loading to false immediately for instant UI
@@ -105,7 +139,8 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       loadMarginSettings(),
       loadAccountsIfNeeded(),
       loadCriticalStatus(),
-      checkMicroserviceHealth()
+      checkMicroserviceHealth(),
+      fetchSignalGeneratorConnections()
     ]).catch(error => {
       console.error('Background loading error:', error);
     });
@@ -116,13 +151,26 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     });
 
     // Set up periodic health checking for microservices (less frequent)
-    const healthCheckInterval = setInterval(checkMicroserviceHealth, 60000); // Every minute
+    const healthCheckInterval = setInterval(() => {
+      checkMicroserviceHealth();
+      fetchSignalGeneratorConnections();
+    }, 60000); // Every minute
+
+    // Fetch GEX data on mount and every 3 minutes
+    fetchGexData();
+    const gexInterval = setInterval(fetchGexData, 3 * 60 * 1000);
+
+    // Fetch strategy status on mount and every 10 seconds
+    fetchStrategyStatus();
+    const strategyInterval = setInterval(fetchStrategyStatus, 10 * 1000);
 
     return () => {
       if (criticalStatusInterval) {
         clearInterval(criticalStatusInterval);
       }
       clearInterval(healthCheckInterval);
+      clearInterval(gexInterval);
+      clearInterval(strategyInterval);
     };
   }, []);
 
@@ -410,6 +458,18 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
 
       socket.socket.on('market_data', handleMarketData);
 
+      // Subscribe to GEX levels updates
+      const handleGexLevelsUpdate = (data) => {
+        console.log('📊 GEX levels update received via WebSocket');
+        if (data) {
+          setGexData(prev => ({
+            cboe: data.cboe || prev.cboe,
+            tradier: data.tradier || prev.tradier
+          }));
+        }
+      };
+      socket.socket.on('gex_levels', handleGexLevelsUpdate);
+
       // Subscribe to critical status updates
       const handleCriticalStatusUpdate = (data) => {
         console.log('🎯 Critical status update received via WebSocket');
@@ -612,6 +672,12 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       socket.socket.on('service_restart_success', handleServiceRestartSuccess);
       socket.socket.on('service_restart_failed', handleServiceRestartFailed);
 
+      // Signal generator health updates
+      const handleSignalGeneratorHealth = (data) => {
+        setSignalGeneratorConnections(prev => ({ ...prev, ...data }));
+      };
+      socket.socket.on('signal_generator_health', handleSignalGeneratorHealth);
+
       // Signal events
       const handleSignalReceived = (signalData) => {
         console.log('📡 Signal received:', signalData);
@@ -619,6 +685,52 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       };
 
       socket.socket.on('signal_received', handleSignalReceived);
+
+      // Position real-time updates
+      const handlePositionUpdate = (data) => {
+        console.log('💼 Position update received via WebSocket:', data);
+        // Refresh critical status to get updated positions
+        loadCriticalStatus();
+        // Also refresh account summary (balance/equity/day P&L) when positions change
+        loadAccountSummary();
+      };
+
+      const handlePositionRealtimeUpdate = (data) => {
+        console.log('💰 Position P&L update received via WebSocket:', data);
+        // Update the specific position's P&L in criticalStatus without full reload
+        setCriticalStatus(prev => {
+          if (!prev || !prev.openPositions) return prev;
+
+          const updatedPositions = prev.openPositions.map(pos => {
+            if (pos.symbol === data.symbol) {
+              return {
+                ...pos,
+                currentPrice: data.currentPrice,
+                unrealizedPnL: data.unrealizedPnL,
+                lastUpdate: data.lastUpdate
+              };
+            }
+            return pos;
+          });
+
+          return {
+            ...prev,
+            openPositions: updatedPositions
+          };
+        });
+      };
+
+      socket.socket.on('position_update', handlePositionUpdate);
+      socket.socket.on('position_realtime_update', handlePositionRealtimeUpdate);
+
+      // Position closed event - refresh account summary to get updated balance/equity
+      const handlePositionClosed = (data) => {
+        console.log('🔒 Position CLOSED event received:', data);
+        // Refresh critical status and account summary
+        loadCriticalStatus();
+        loadAccountSummary();
+      };
+      socket.socket.on('position_closed', handlePositionClosed);
 
       return () => {
         socket.socket.off('relay_status_change', handleRelayStatusChange);
@@ -630,6 +742,7 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('webhook_received', handleWebhookReceived);
         socket.socket.off('webhook_error', handleWebhookError);
         socket.socket.off('market_data', handleMarketData);
+        socket.socket.off('gex_levels', handleGexLevelsUpdate);
         socket.socket.off('critical_status_update', handleCriticalStatusUpdate);
         socket.socket.off('initial_activity', handleInitialActivity);
         socket.socket.off('filtered_activity', handleFilteredActivity);
@@ -643,7 +756,11 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
         socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
         socket.socket.off('service_restart_success', handleServiceRestartSuccess);
         socket.socket.off('service_restart_failed', handleServiceRestartFailed);
+        socket.socket.off('signal_generator_health', handleSignalGeneratorHealth);
         socket.socket.off('signal_received', handleSignalReceived);
+        socket.socket.off('position_update', handlePositionUpdate);
+        socket.socket.off('position_realtime_update', handlePositionRealtimeUpdate);
+        socket.socket.off('position_closed', handlePositionClosed);
       };
     }
   }, [socket]);
@@ -694,12 +811,12 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     const hasActiveItems = criticalStatus.openOrders?.length > 0 || criticalStatus.openPositions?.length > 0;
 
     if (hasActiveItems && !criticalStatusInterval) {
-      // Start polling if we have active items but no interval
-      console.log('🎯 Starting polling - active orders/positions detected');
+      // Start polling if we have active items but no interval (WebSocket fallback)
+      console.log('🎯 Starting fallback polling - active orders/positions detected');
       const interval = setInterval(() => {
         loadCriticalStatus();
         checkMicroserviceHealth();
-      }, 15000); // More frequent when active
+      }, 60000); // Every 60 seconds as fallback (WebSocket handles real-time updates)
       setCriticalStatusInterval(interval);
     } else if (!hasActiveItems && criticalStatusInterval) {
       // Stop polling if no active items
@@ -846,6 +963,31 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
     } finally {
       setIsLoading(false);
       setLastUpdate(new Date());
+    }
+  };
+
+  // Fetch GEX data from both sources
+  const fetchGexData = async () => {
+    try {
+      const [cboe, tradier] = await Promise.all([
+        api.getGexLevels().catch(() => null),
+        api.getTradierGexLevels().catch(() => null)
+      ]);
+      setGexData({ cboe, tradier });
+    } catch (err) {
+      console.error('Error fetching GEX data:', err);
+    }
+  };
+
+  // Fetch strategy status from signal-generator
+  const fetchStrategyStatus = async () => {
+    try {
+      const response = await api.getStrategyStatus();
+      if (response?.data) {
+        setStrategyStatus(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching strategy status:', err);
     }
   };
 
@@ -1205,23 +1347,29 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
           <EnhancedTradingStatus
             socket={socket}
             onPositionClosed={loadAccountSummary}
+            accountSummary={accountSummary}
           />
 
 
-          {/* Account Overview and Live Quotes side by side */}
+          {/* Market Data Panels - 3 column grid */}
           {account && (
             <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <AccountInfo
-                  account={account}
-                  summary={accountSummary}
-                  isLoading={isLoading && !accountSummary}
-                />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <QuotesPanel
                   quotes={quotes}
                   isLoading={false}
                 />
+                <IVSkewPanel socket={socket} quotes={quotes} />
+                <GexComparisonPanel gexData={gexData} onRefresh={fetchGexData} />
               </div>
+
+              {/* NQ vs GEX Levels Chart - Full Width with Strategy Status */}
+              <GexChart
+                nqQuote={quotes.NQ || quotes.MNQ}
+                height={600}
+                gexData={gexData}
+                strategyStatus={strategyStatus}
+              />
 
               {/* Platform Status - Full Width */}
               <div>
@@ -1329,8 +1477,10 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                       </p>
                     </div>
 
-                    {/* Microservices Health Grid */}
-                    {Object.entries(microserviceHealth).map(([serviceName, health]) => (
+                    {/* Microservices Health Grid (excluding signal-generator) */}
+                    {Object.entries(microserviceHealth)
+                      .filter(([serviceName]) => serviceName !== 'signal-generator')
+                      .map(([serviceName, health]) => (
                       <div key={serviceName} className="bg-gray-700 p-4 rounded relative">
                         <h4 className="font-semibold text-white mb-2 capitalize">
                           {serviceName.replace('-', ' ')}
@@ -1368,19 +1518,214 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
                         )}
                       </div>
                     ))}
+
+                    {/* Signal Generator - Enhanced Card with Connection Status */}
+                    {microserviceHealth['signal-generator'] && (
+                      <div className={`bg-gray-700 p-4 rounded relative ${sgConnectionsExpanded ? 'col-span-full' : ''}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold text-white mb-2">Signal Generator</h4>
+                            <p className={`text-sm font-bold ${
+                              microserviceHealth['signal-generator'].status === 'healthy' ? 'text-green-400' :
+                              microserviceHealth['signal-generator'].status === 'unhealthy' ? 'text-red-400' :
+                              microserviceHealth['signal-generator'].status === 'restarting' ? 'text-yellow-400' :
+                              'text-yellow-400'
+                            }`}>
+                              {microserviceHealth['signal-generator'].status === 'healthy' ? '🟢 Healthy' :
+                               microserviceHealth['signal-generator'].status === 'unhealthy' ? '🔴 Down' :
+                               microserviceHealth['signal-generator'].status === 'restarting' ? '🔄 Restarting' :
+                               '🟡 Unknown'}
+                              {signalGeneratorConnections?.overall && (
+                                <span className={`ml-2 ${
+                                  signalGeneratorConnections.overall === 'healthy' ? 'text-green-400' :
+                                  signalGeneratorConnections.overall === 'degraded' ? 'text-yellow-400' :
+                                  'text-red-400'
+                                }`}>
+                                  ({signalGeneratorConnections.overall === 'healthy' ? 'All Connected' :
+                                    signalGeneratorConnections.overall === 'degraded' ? 'Degraded' : 'Issues'})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            {signalGeneratorConnections && (
+                              <button
+                                onClick={() => setSgConnectionsExpanded(!sgConnectionsExpanded)}
+                                className="text-gray-400 hover:text-white transition-colors p-1"
+                                title={sgConnectionsExpanded ? 'Collapse' : 'Expand connections'}
+                              >
+                                <svg className={`w-4 h-4 transition-transform ${sgConnectionsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                            )}
+                            {process.env.REACT_APP_ENVIRONMENT === 'production' && (
+                              <button
+                                onClick={() => handleServiceRestart('signal-generator')}
+                                disabled={microserviceHealth['signal-generator'].status === 'restarting'}
+                                className={`px-2 py-1 text-xs rounded transition-colors ${
+                                  microserviceHealth['signal-generator'].status === 'restarting'
+                                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                }`}
+                                title={microserviceHealth['signal-generator'].status === 'restarting' ? 'Restart in progress...' : 'Restart signal-generator'}
+                              >
+                                {microserviceHealth['signal-generator'].status === 'restarting' ? '⏳' : '🔄'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Connection Badges - Always visible when data available */}
+                        {signalGeneratorConnections?.connections && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              signalGeneratorConnections.connections.tradingview?.connected
+                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
+                            }`}>
+                              {signalGeneratorConnections.connections.tradingview?.connected ? '✓' : '✗'} TV
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              signalGeneratorConnections.connections.ltMonitor?.connected
+                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
+                            }`}>
+                              {signalGeneratorConnections.connections.ltMonitor?.connected ? '✓' : '✗'} LT
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected'
+                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                                : signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed'
+                                ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
+                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
+                            }`}>
+                              {signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? '✓' :
+                               signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Tradier
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              signalGeneratorConnections.connections.cboe?.hasData
+                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
+                            }`}>
+                              {signalGeneratorConnections.connections.cboe?.hasData ? '✓' : '✗'} CBOE
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Expanded Connection Details */}
+                        {sgConnectionsExpanded && signalGeneratorConnections?.connections && (
+                          <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
+                            {/* TradingView */}
+                            <div className="bg-gray-800/50 rounded p-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white text-sm font-medium">TradingView WebSocket</span>
+                                <span className={`text-xs ${signalGeneratorConnections.connections.tradingview?.connected ? 'text-green-400' : 'text-red-400'}`}>
+                                  {signalGeneratorConnections.connections.tradingview?.connected ? 'Connected' : 'Disconnected'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                                <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
+                                <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastHeartbeat)}</span></div>
+                                <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
+                                <div><span className="text-gray-400">Symbols:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.symbols?.length || 0}</span></div>
+                              </div>
+                            </div>
+
+                            {/* LT Monitor */}
+                            <div className="bg-gray-800/50 rounded p-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white text-sm font-medium">LT Monitor WebSocket</span>
+                                <span className={`text-xs ${signalGeneratorConnections.connections.ltMonitor?.connected ? 'text-green-400' : 'text-red-400'}`}>
+                                  {signalGeneratorConnections.connections.ltMonitor?.connected ? 'Connected' : 'Disconnected'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 mt-1 text-xs">
+                                <div><span className="text-gray-400">Has Levels:</span> <span className="text-white">{signalGeneratorConnections.connections.ltMonitor?.hasLevels ? 'Yes' : 'No'}</span></div>
+                                <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.ltMonitor?.lastHeartbeat)}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Tradier */}
+                            <div className="bg-gray-800/50 rounded p-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white text-sm font-medium">Tradier Options</span>
+                                <span className={`text-xs ${
+                                  signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? 'text-green-400' :
+                                  signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? 'text-yellow-400' :
+                                  'text-red-400'
+                                }`}>
+                                  {signalGeneratorConnections.connections.tradier?.displayStatus || 'Unknown'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                                <div><span className="text-gray-400">Available:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.available ? 'Yes' : 'No'}</span></div>
+                                <div><span className="text-gray-400">Running:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.running ? 'Yes' : 'No'}</span></div>
+                                <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
+                                <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
+                              </div>
+                            </div>
+
+                            {/* CBOE */}
+                            <div className="bg-gray-800/50 rounded p-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white text-sm font-medium">CBOE API</span>
+                                <span className={`text-xs ${signalGeneratorConnections.connections.cboe?.hasData ? 'text-green-400' : 'text-red-400'}`}>
+                                  {signalGeneratorConnections.connections.cboe?.hasData ? 'Has Data' : 'No Data'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                                <div><span className="text-gray-400">Enabled:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.enabled ? 'Yes' : 'No'}</span></div>
+                                <div><span className="text-gray-400">Data Age:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.ageMinutes != null ? `${signalGeneratorConnections.connections.cboe.ageMinutes} min` : 'N/A'}</span></div>
+                                <div><span className="text-gray-400">Last Fetch:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.cboe?.lastFetch)}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Hybrid GEX */}
+                            {signalGeneratorConnections.connections.hybridGex && (
+                              <div className="bg-gray-800/50 rounded p-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-white text-sm font-medium">Hybrid GEX</span>
+                                  <span className={`text-xs ${signalGeneratorConnections.connections.hybridGex?.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                                    {signalGeneratorConnections.connections.hybridGex?.enabled ? 'Enabled' : 'Disabled'}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                                  <div><span className="text-gray-400">Primary:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.primarySource || 'N/A'}</span></div>
+                                  <div><span className="text-gray-400">RTH Cache:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.usingRTHCache ? 'Yes' : 'No'}</span></div>
+                                  <div><span className="text-gray-400">Tradier Fresh:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="text-xs text-gray-500 text-right">
+                              Updated: {signalGeneratorConnections.timestamp ? formatAge(signalGeneratorConnections.timestamp) : 'Never'}
+                            </div>
+                          </div>
+                        )}
+
+                        {!sgConnectionsExpanded && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            {microserviceHealth['signal-generator'].lastChecked ?
+                              `Last check: ${microserviceHealth['signal-generator'].lastChecked.toLocaleTimeString()}` :
+                              'Not checked'}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Microservice Health Controls */}
                   <div className="mt-4 flex space-x-2">
                     <button
-                      onClick={checkMicroserviceHealth}
+                      onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); }}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
                     >
-                      🔄 Refresh Health
+                      Refresh Health
                     </button>
+                  </div>
                 </div>
               </div>
-            </div>
             </>
           )}
 
@@ -1397,10 +1742,10 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
           />
 
           {/* Market News Panel */}
-          <NewsPanel
+          {/* <NewsPanel
             socket={socket}
             isLoading={isLoading}
-          />
+          /> */}
 
         </div>
       </div>

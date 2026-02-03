@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, apiUtils } from '../services/api';
 
-const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
+const EnhancedTradingStatus = ({ socket, onPositionClosed, accountSummary }) => {
   const [tradingData, setTradingData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -236,37 +236,84 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
   const hasOpenPositions = tradingData?.openPositions?.length > 0;
   const hasActiveItems = hasPendingOrders || hasOpenPositions;
 
+  // Get P&L color for display
+  const dayPnLColor = apiUtils.getPnLColor(accountSummary?.dayPnL || 0);
+  const dayPnLPercent = accountSummary?.dayPnLPercent || 0;
+
   return (
-    <div className="bg-gray-800 rounded-lg p-6">
-      {/* Trading Status Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 p-3 bg-gray-700 rounded">
-        <div className="text-center">
-          <div className="text-xs text-gray-400">Open Positions</div>
-          <div className="font-bold text-blue-400 text-lg">
-            {tradingData?.stats?.totalPositions || 0}
+    <div className="bg-gray-800 rounded-lg p-3">
+      {/* Account & Trading Status Summary - Single Box */}
+      <div className="mb-2 p-2 bg-gray-700 rounded">
+        {/* First Row - Account Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pb-2">
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Balance</div>
+            <div className="font-bold text-white text-base">
+              {apiUtils.formatCurrency(accountSummary?.balance)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Equity</div>
+            <div className="font-bold text-white text-base">
+              {apiUtils.formatCurrency(accountSummary?.equity)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Available</div>
+            <div className="font-bold text-white text-base">
+              {apiUtils.formatCurrency(accountSummary?.availableFunds)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Margin Used</div>
+            <div className="font-bold text-white text-base">
+              {apiUtils.formatCurrency(accountSummary?.margin)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Day P&L</div>
+            <div className={`font-bold text-base ${dayPnLColor}`}>
+              {apiUtils.formatCurrency(accountSummary?.dayPnL)}
+              <span className="text-xs ml-1">
+                ({dayPnLPercent > 0 ? '+' : ''}{dayPnLPercent.toFixed(2)}%)
+              </span>
+            </div>
           </div>
         </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-400">Pending Orders</div>
-          <div className="font-bold text-yellow-400 text-lg">
-            {tradingData?.stats?.totalWorkingOrders || 0}
+
+        {/* Divider Line */}
+        <div className="border-t border-gray-600 mb-2"></div>
+
+        {/* Second Row - Trading Activity Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Open Positions</div>
+            <div className="font-bold text-blue-400 text-base">
+              {tradingData?.stats?.totalPositions || 0}
+            </div>
           </div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-400">Daily Trades</div>
-          <div className="font-bold text-lg text-gray-400">
-            {tradingData?.stats?.dailyTrades || 0}
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Pending Orders</div>
+            <div className="font-bold text-yellow-400 text-base">
+              {tradingData?.stats?.totalWorkingOrders || 0}
+            </div>
           </div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-400">Last Updated</div>
-          <div className="font-bold text-lg text-gray-300">
-            {lastUpdate ? lastUpdate.toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: true
-            }) : 'Loading...'}
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Daily Trades</div>
+            <div className="font-bold text-base text-gray-400">
+              {tradingData?.stats?.dailyTrades || 0}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-gray-400">Last Updated</div>
+            <div className="font-bold text-base text-gray-300">
+              {lastUpdate ? lastUpdate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+              }) : 'Loading...'}
+            </div>
           </div>
         </div>
       </div>
@@ -364,20 +411,22 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Target</span>
                       <span className={`text-sm font-medium ${
-                        (position.targetPrice || position.signalContext?.takeProfit) ? 'text-blue-400' : 'text-gray-500'
+                        (position.targetPrice || position.signalContext?.takeProfit || position.take_profit) ? 'text-blue-400' : 'text-gray-500'
                       }`}>
                         {position.targetPrice ? formatCurrency(position.targetPrice) :
-                         position.signalContext?.takeProfit ? formatCurrency(position.signalContext.takeProfit) : '—'}
+                         position.signalContext?.takeProfit ? formatCurrency(position.signalContext.takeProfit) :
+                         position.take_profit ? formatCurrency(position.take_profit) : '—'}
                       </span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Stop Loss</span>
                       <span className={`text-sm font-medium ${
-                        (position.stopPrice || position.signalContext?.stopLoss || position.signalContext?.stopPrice) ? 'text-orange-400' : 'text-gray-500'
+                        (position.stopPrice || position.signalContext?.stopLoss || position.signalContext?.stopPrice || position.stop_loss) ? 'text-orange-400' : 'text-gray-500'
                       }`}>
                         {position.stopPrice ? formatCurrency(position.stopPrice) :
                          position.signalContext?.stopLoss ? formatCurrency(position.signalContext.stopLoss) :
-                         position.signalContext?.stopPrice ? formatCurrency(position.signalContext.stopPrice) : '—'}
+                         position.signalContext?.stopPrice ? formatCurrency(position.signalContext.stopPrice) :
+                         position.stop_loss ? formatCurrency(position.stop_loss) : '—'}
                       </span>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -493,17 +542,19 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Target</span>
                       <span className={`text-sm font-medium ${
-                        order.signalContext?.takeProfit ? 'text-blue-400' : 'text-gray-500'
+                        (order.signalContext?.takeProfit || order.take_profit) ? 'text-blue-400' : 'text-gray-500'
                       }`}>
-                        {order.signalContext?.takeProfit ? formatCurrency(order.signalContext.takeProfit) : '—'}
+                        {order.signalContext?.takeProfit ? formatCurrency(order.signalContext.takeProfit) :
+                         order.take_profit ? formatCurrency(order.take_profit) : '—'}
                       </span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-gray-400 uppercase tracking-wide">Stop Loss</span>
                       <span className={`text-sm font-medium ${
-                        order.signalContext?.stopLoss ? 'text-orange-400' : 'text-gray-500'
+                        (order.signalContext?.stopLoss || order.stop_loss) ? 'text-orange-400' : 'text-gray-500'
                       }`}>
-                        {order.signalContext?.stopLoss ? formatCurrency(order.signalContext.stopLoss) : '—'}
+                        {order.signalContext?.stopLoss ? formatCurrency(order.signalContext.stopLoss) :
+                         order.stop_loss ? formatCurrency(order.stop_loss) : '—'}
                       </span>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -549,14 +600,10 @@ const EnhancedTradingStatus = ({ socket, onPositionClosed }) => {
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - Minimal */}
       {!hasActiveItems && (
-        <div className="text-center text-gray-500 py-8">
-          <div className="text-4xl mb-3">💤</div>
-          <div className="text-lg font-semibold mb-2">No Active Trading Activity</div>
-          <div className="text-sm">
-            No pending orders or open positions from trade signals
-          </div>
+        <div className="text-center text-gray-500 py-2 text-sm">
+          No active positions or pending orders
         </div>
       )}
 
