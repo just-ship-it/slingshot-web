@@ -1,972 +1,109 @@
-import React, { useState, useEffect } from 'react';
-// import AccountInfo from './AccountInfo';
-import TradesList from './TradesList';
-import SignalsList from './SignalsList';
-import QuotesPanel from './QuotesPanel';
+import React, { useState, useEffect, useRef } from 'react';
 import GexComparisonPanel from './GexComparisonPanel';
 import GexChart from './GexChart';
-// import GexRecoilStrategyPanel from './GexRecoilStrategyPanel';
-// import NewsPanel from './NewsPanel';
-import EnhancedTradingStatus from './EnhancedTradingStatus';
 import IVSkewPanel from './IVSkewPanel';
+import ESCrossSignalPanel from './ESCrossSignalPanel';
+import ESGexLevelsPanel from './ESGexLevelsPanel';
+import TradingPanel from './TradingPanel';
 import { api } from '../services/api';
 
-const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
+const Dashboard = ({
+  account,
+  socket,
+  onRefresh,
+  onAccountsLoaded,
+  tradovateStatus,
+  onTradovateCheck,
+  onQuotesChange,
+  onAccountSummaryChange,
+  tradingPanelOpen,
+  onToggleTradingPanel,
+  tradingData,
+  tradingDataLoading,
+}) => {
   const [accountSummary, setAccountSummary] = useState(null);
-  const [positions, setPositions] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [signals, setSignals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [tradovateStatus, setTradovateStatus] = useState('disabled');
-  const [tradovateError, setTradovateError] = useState('Tradovate connection temporarily disabled');
-  const [isTradovateChecking, setIsTradovateChecking] = useState(false);
-  const [criticalStatus, setCriticalStatus] = useState(null);
-  const [criticalStatusError, setCriticalStatusError] = useState(null);
   const [quotes, setQuotes] = useState({});
 
-  // GEX data - shared between chart and panel
+  // GEX data
   const [gexData, setGexData] = useState({ cboe: null, tradier: null });
+  const [esGexData, setEsGexData] = useState({ cboe: null, tradier: null });
 
-  // Strategy status from signal-generator
+  // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
+  const [esStrategyStatus, setEsStrategyStatus] = useState(null);
 
-  // Webhook relay state
-  const [relayStatus, setRelayStatus] = useState({
-    isRunning: false,
-    connectionUrl: null,
-    lastError: null,
-    uptime: 0
-  });
-  const [relayLogs, setRelayLogs] = useState([]);
-  const [isRelayLoading, setIsRelayLoading] = useState(false);
-  const [activityFilter, setActivityFilter] = useState('all');
-  const [tradingEnabled, setTradingEnabled] = useState(false);
-  const [isKillSwitchLoading, setIsKillSwitchLoading] = useState(false);
-  const [positionSizingSettings, setPositionSizingSettings] = useState({
-    method: 'fixed',
-    fixedQuantity: 1,
-    riskPercentage: 10,
-    maxContracts: 10,
-    contractType: 'auto'
-  });
-  const [showPositionSizingModal, setShowPositionSizingModal] = useState(false);
-  const [positionSizingLoading, setPositionSizingLoading] = useState(false);
-  const [showJsonModal, setShowJsonModal] = useState(false);
-  const [selectedJsonData, setSelectedJsonData] = useState(null);
-  const [marginSettings, setMarginSettings] = useState({});
-  const [showMarginModal, setShowMarginModal] = useState(false);
-  const [marginLoading, setMarginLoading] = useState(false);
-  const [showActivitySidebar, setShowActivitySidebar] = useState(false);
-
-  // Microservice health state
-  const [microserviceHealth, setMicroserviceHealth] = useState({});
-  const [signalGeneratorConnections, setSignalGeneratorConnections] = useState(null);
-  const [sgConnectionsExpanded, setSgConnectionsExpanded] = useState(false);
-
-  // Live polling state
-  const [pollingEnabled, setPollingEnabled] = useState(true);
+  // Polling state
   const [pollingInterval, setPollingInterval] = useState(null);
-  const [lastPollingUpdate, setLastPollingUpdate] = useState(null);
-  const [criticalStatusInterval, setCriticalStatusInterval] = useState(null);
-  const [isReSyncing, setIsReSyncing] = useState(false);
-  const [isFullSyncing, setIsFullSyncing] = useState(false);
 
-  // Check microservice health via monitoring service API
-  const checkMicroserviceHealth = async () => {
-    try {
-      const services = await api.getServices();
-      const healthState = {};
+  // Refs for callbacks to avoid stale closures
+  const onQuotesChangeRef = useRef(onQuotesChange);
+  const onAccountSummaryChangeRef = useRef(onAccountSummaryChange);
+  useEffect(() => { onQuotesChangeRef.current = onQuotesChange; }, [onQuotesChange]);
+  useEffect(() => { onAccountSummaryChangeRef.current = onAccountSummaryChange; }, [onAccountSummaryChange]);
 
-      services.forEach(service => {
-        healthState[service.name] = {
-          serviceName: service.name,
-          status: service.status === 'running' ? 'healthy' : 'unhealthy',
-          lastChecked: service.lastChecked ? new Date(service.lastChecked) : new Date(),
-          error: service.error || null,
-          port: service.port,
-          details: service
-        };
-      });
-
-      setMicroserviceHealth(healthState);
-    } catch (error) {
-      console.error('Failed to check microservice health:', error);
-      // Set all services as unknown on error
-      setMicroserviceHealth({
-        'monitoring-service': {
-          serviceName: 'monitoring-service',
-          status: 'unhealthy',
-          lastChecked: new Date(),
-          error: error.message
-        }
-      });
-    }
-  };
-
-  // Fetch signal generator connection status
-  const fetchSignalGeneratorConnections = async () => {
-    try {
-      const data = await api.getSignalGeneratorStatus();
-      if (data) {
-        setSignalGeneratorConnections(data);
-      }
-    } catch (err) {
-      console.log('Signal generator status not available:', err.message);
-    }
-  };
-
-  // Format age helper for signal generator timestamps
-  const formatAge = (timestamp) => {
-    if (!timestamp) return 'Never';
-    const age = (Date.now() - new Date(timestamp).getTime()) / 1000;
-    if (age < 0) return 'Just now';
-    if (age < 60) return `${Math.floor(age)}s ago`;
-    if (age < 3600) return `${Math.floor(age / 60)}m ago`;
-    return `${Math.floor(age / 3600)}h ago`;
-  };
-
-  // Load dashboard immediately, check connections in background
+  // Push quotes up to App
   useEffect(() => {
-    // Set loading to false immediately for instant UI
-    setIsLoading(false);
+    onQuotesChangeRef.current?.(quotes);
+  }, [quotes]);
 
-    // Load all necessary data in parallel in background
-    Promise.all([
-      checkRelayStatus(),
-      loadKillSwitchStatus(),
-      loadPositionSizingSettings(),
-      loadMarginSettings(),
-      loadAccountsIfNeeded(),
-      loadCriticalStatus(),
-      checkMicroserviceHealth(),
-      fetchSignalGeneratorConnections()
-    ]).catch(error => {
-      console.error('Background loading error:', error);
-    });
-
-    // Check Tradovate connection but don't block UI
-    checkTradovateConnection().catch(error => {
-      console.error('Tradovate connection check error:', error);
-    });
-
-    // Set up periodic health checking for microservices (less frequent)
-    const healthCheckInterval = setInterval(() => {
-      checkMicroserviceHealth();
-      fetchSignalGeneratorConnections();
-    }, 60000); // Every minute
-
-    // Fetch GEX data on mount and every 3 minutes
-    fetchGexData();
-    const gexInterval = setInterval(fetchGexData, 3 * 60 * 1000);
-
-    // Fetch strategy status on mount and every 10 seconds
-    fetchStrategyStatus();
-    const strategyInterval = setInterval(fetchStrategyStatus, 10 * 1000);
-
-    return () => {
-      if (criticalStatusInterval) {
-        clearInterval(criticalStatusInterval);
-      }
-      clearInterval(healthCheckInterval);
-      clearInterval(gexInterval);
-      clearInterval(strategyInterval);
-    };
-  }, []);
-
-  // Kill switch functions
-  const loadKillSwitchStatus = async () => {
-    try {
-      const response = await api.getKillSwitchStatus();
-      setTradingEnabled(response.tradingEnabled);
-    } catch (error) {
-      console.error('Failed to load kill switch status:', error);
-    }
-  };
-
-  const handleKillSwitchToggle = async () => {
-    const newState = !tradingEnabled;
-
-    // Confirmation for enabling trading
-    if (newState) {
-      if (!window.confirm('⚠️ Are you sure you want to ENABLE live trading?\n\nThis will allow the system to execute real trades.')) {
-        return;
-      }
-    }
-
-    setIsKillSwitchLoading(true);
-    try {
-      const response = await api.setKillSwitch(newState);
-      setTradingEnabled(response.tradingEnabled);
-
-      // Add to activity log
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'kill_switch',
-        data: newState
-          ? '🟢 Trading ENABLED'
-          : '🔴 Trading DISABLED (Kill Switch Active)'
-      }].slice(0, 100));
-    } catch (error) {
-      console.error('Failed to toggle kill switch:', error);
-      alert(`Failed to ${newState ? 'enable' : 'disable'} trading: ${error.message}`);
-    } finally {
-      setIsKillSwitchLoading(false);
-    }
-  };
-
-  // Position sizing functions
-  const loadPositionSizingSettings = async () => {
-    try {
-      const response = await api.getPositionSizingSettings();
-      setPositionSizingSettings(response.settings || response);
-    } catch (error) {
-      console.error('Failed to load position sizing settings:', error);
-      // Set default values when loading fails
-      setPositionSizingSettings({
-        method: 'fixed',
-        fixedQuantity: 1,
-        riskPercentage: 10,
-        maxContracts: 10,
-        contractType: 'auto',
-        enabled: false
-      });
-    }
-  };
-
-  const handlePositionSizingUpdate = async (newSettings) => {
-    setPositionSizingLoading(true);
-    try {
-      const response = await api.setPositionSizingSettings(newSettings);
-      setPositionSizingSettings(response.settings);
-
-      // Add to activity log
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'position_sizing',
-        data: `⚙️ Position sizing updated: ${newSettings.method} method`
-      }].slice(0, 100));
-
-      setShowPositionSizingModal(false);
-    } catch (error) {
-      console.error('Failed to update position sizing settings:', error);
-      alert(`Failed to update position sizing: ${error.message}`);
-    } finally {
-      setPositionSizingLoading(false);
-    }
-  };
-
-  const handleSavePositionSizing = async () => {
-    await handlePositionSizingUpdate(positionSizingSettings);
-  };
-
-  const handleShowJsonData = (log) => {
-    setSelectedJsonData(log);
-    setShowJsonModal(true);
-  };
-
-  // Margin settings functions
-  const loadMarginSettings = async () => {
-    try {
-      const response = await api.getMarginSettings();
-      setMarginSettings(response.marginSettings || response || {});
-    } catch (error) {
-      console.error('Failed to load margin settings:', error);
-      // Set default values when loading fails
-      setMarginSettings({
-        enabled: false
-      });
-    }
-  };
-
-  const handleMarginUpdate = async (newMarginSettings) => {
-    setMarginLoading(true);
-    try {
-      const response = await api.setMarginSettings(newMarginSettings);
-      setMarginSettings(response.marginSettings);
-
-      // Add to activity log
-      setRelayLogs(prev => [{
-        timestamp: new Date().toISOString(),
-        type: 'margin_settings',
-        data: '💰 Margin requirements updated'
-      }].slice(0, 100));
-
-      setShowMarginModal(false);
-    } catch (error) {
-      console.error('Failed to update margin settings:', error);
-      alert(`Failed to update margin settings: ${error.message}`);
-    } finally {
-      setMarginLoading(false);
-    }
-  };
-
-  const handleSaveMarginSettings = async () => {
-    await handleMarginUpdate(marginSettings);
-  };
-
-  // Handle socket connection state changes - refresh data on reconnection
+  // Push accountSummary up to App
   useEffect(() => {
-    if (socket?.isConnected) {
-      console.log('🔌 Socket connected - refreshing dashboard data');
+    onAccountSummaryChangeRef.current?.(accountSummary);
+  }, [accountSummary]);
 
-      // Refresh quotes, health data, and account data when socket reconnects
-      Promise.all([
-        loadQuotes(),
-        checkMicroserviceHealth(),
-        onRefresh() // Reload account data
-      ]).then(() => {
-        console.log('✅ Data refreshed after socket reconnection');
-      }).catch(error => {
-        console.error('❌ Failed to refresh data after reconnection:', error);
-      });
-    } else if (socket?.isConnected === false) {
-      console.log('❌ Socket disconnected - microservice health may be stale');
+  // --- Data loading ---
+  const loadQuotes = async () => {
+    try {
+      const quotesData = await api.getQuotes?.() || {};
+      setQuotes(quotesData);
+    } catch (error) {
+      console.error('Failed to load quotes:', error.message);
     }
-  }, [socket?.isConnected]);
+  };
 
-  // Setup WebSocket listeners for relay events
-  useEffect(() => {
-    console.log('🔌 Setting up WebSocket listeners, socket status:', socket?.isConnected);
-    if (socket?.socket) {
-      console.log('✅ WebSocket socket available, adding event listeners');
-      const handleRelayStatusChange = (data) => {
-        console.log('Relay status change:', data);
-        checkRelayStatus(); // Refresh status
-      };
-
-      const handleRelayStarted = (data) => {
-        console.log('Relay started:', data);
-        setRelayStatus(prev => ({ ...prev, isRunning: true, lastError: null }));
-      };
-
-      const handleRelayExited = (data) => {
-        console.log('Relay exited:', data);
-        setRelayStatus(prev => ({ ...prev, isRunning: false }));
-      };
-
-      const handleRelayError = (data) => {
-        console.log('Relay error:', data);
-        setRelayStatus(prev => ({ ...prev, lastError: data.error }));
-      };
-
-      const handleRelayUrlDetected = (data) => {
-        console.log('Relay URL detected:', data);
-        setRelayStatus(prev => ({ ...prev, connectionUrl: data.url }));
-      };
-
-      const handleRelayOutput = (data) => {
-        // Add relay output to logs
-        setRelayLogs(prev => [...prev.slice(-49), {
-          timestamp: data.timestamp,
-          type: data.type,
-          data: data.data
-        }]);
-      };
-
-      const handleWebhookReceived = (data) => {
-        console.log('🎯 Frontend received webhook event:', data);
-
-        // Check if contract conversion occurred
-        const contractSelection = data.result?.contractSelection;
-        const isBlocked = data.result?.blocked || data.result?.killSwitchActive;
-
-        let displayText = `📨 ${data.action.toUpperCase()} ${data.quantity} ${data.symbol} ${data.price ? `@ $${data.price}` : ''} (${data.source})`;
-
-        if (contractSelection) {
-          if (contractSelection.converted) {
-            displayText = `🔄 ${data.action.toUpperCase()} ${contractSelection.finalQuantity} ${contractSelection.finalSymbol} ${data.price ? `@ $${data.price}` : ''} (CONVERTED from ${contractSelection.originalSymbol} - Margin Optimized)`;
-          } else {
-            displayText = `✅ ${data.action.toUpperCase()} ${contractSelection.finalQuantity} ${contractSelection.finalSymbol} ${data.price ? `@ $${data.price}` : ''} (Sufficient Margin - $${contractSelection.marginUsed} used)`;
-          }
-
-          // Add blocked indicator if kill switch is active
-          if (isBlocked) {
-            displayText += ' [BLOCKED BY KILL SWITCH]';
-          }
-        } else if (isBlocked) {
-          displayText = `🚫 BLOCKED: ${data.action.toUpperCase()} ${data.quantity} ${data.symbol} ${data.price ? `@ $${data.price}` : ''} (Kill Switch Active)`;
-        }
-
-        // Add webhook activity to logs
-        const logEntry = {
-          timestamp: data.timestamp,
-          type: 'webhook',
-          data: displayText,
-          rawData: data.rawData,
-          result: data.result,
-          contractSelection: contractSelection,
-          blocked: isBlocked
-        };
-        console.log('🔄 Adding log entry:', logEntry);
-        setRelayLogs(prev => [...prev.slice(-49), logEntry]);
-      };
-
-      const handleWebhookError = (data) => {
-        console.log('Webhook error:', data);
-        // Add webhook error to logs
-        setRelayLogs(prev => [...prev.slice(-49), {
-          timestamp: data.timestamp,
-          type: 'stderr',
-          data: `❌ Webhook Error: ${data.error}`
-        }]);
-      };
-
-      // Subscribe to relay events
-      socket.socket.on('relay_status_change', handleRelayStatusChange);
-      socket.socket.on('relay_started', handleRelayStarted);
-      socket.socket.on('relay_exited', handleRelayExited);
-      socket.socket.on('relay_error', handleRelayError);
-      socket.socket.on('relay_url_detected', handleRelayUrlDetected);
-      socket.socket.on('relay_output', handleRelayOutput);
-
-      // Subscribe to webhook events
-      socket.socket.on('webhook_received', handleWebhookReceived);
-      socket.socket.on('webhook_error', handleWebhookError);
-
-      // Subscribe to market data updates
-      const handleMarketData = (data) => {
-        console.log('📊 Market data received:', data);
-        setQuotes(prev => {
-          const newQuote = {
-            symbol: data.symbol,
-            baseSymbol: data.baseSymbol,
-            open: data.open,
-            high: data.high,
-            low: data.low,
-            close: data.close,
-            previousClose: data.previousClose,
-            volume: data.volume,
-            timestamp: data.timestamp
-          };
-
-          const updates = {
-            ...prev,
-            // Store by full symbol
-            [data.symbol]: newQuote
-          };
-
-          // Also store by base symbol for QuotesPanel compatibility
-          if (data.baseSymbol) {
-            updates[data.baseSymbol] = newQuote;
-          }
-
-          console.log('📊 Updated quotes state:', Object.keys(updates), 'MNQ value:', updates.MNQ?.close, 'MES value:', updates.MES?.close);
-          return updates;
+  const loadAccountSummary = async () => {
+    if (!account?.id) return;
+    try {
+      const response = await api.getAccountSummary(account.id);
+      setAccountSummary(response.summary);
+    } catch (error) {
+      console.error('Failed to load account summary:', error);
+      if (error.response?.status === 503) {
+        setAccountSummary({
+          accountId: account.id, balance: 0, equity: 0, margin: 0, availableFunds: 0,
+          dayPnL: 0, dayPnLPercent: 0, totalPositions: 0, longPositions: 0, shortPositions: 0,
+          workingOrders: 0, tradesExecutedToday: 0, cached: false, empty: true, loading: true
         });
-      };
-
-      socket.socket.on('market_data', handleMarketData);
-
-      // Subscribe to GEX levels updates
-      const handleGexLevelsUpdate = (data) => {
-        console.log('📊 GEX levels update received via WebSocket');
-        if (data) {
-          setGexData(prev => ({
-            cboe: data.cboe || prev.cboe,
-            tradier: data.tradier || prev.tradier
-          }));
-        }
-      };
-      socket.socket.on('gex_levels', handleGexLevelsUpdate);
-
-      // Subscribe to critical status updates
-      const handleCriticalStatusUpdate = (data) => {
-        console.log('🎯 Critical status update received via WebSocket');
-        // Only update if data has actually changed
-        setCriticalStatus(prev => {
-          const newData = JSON.stringify(data);
-          const prevData = JSON.stringify(prev);
-          if (newData !== prevData) {
-            return data;
-          }
-          return prev;
-        });
-      };
-      socket.socket.on('critical_status_update', handleCriticalStatusUpdate);
-
-      // Handle initial activity from database
-      const handleInitialActivity = (activities) => {
-        const formattedLogs = activities.map(activity => ({
-          timestamp: activity.timestamp,
-          type: activity.type,
-          data: activity.message || activity.data
-        }));
-        setRelayLogs(prev => [...formattedLogs, ...prev].slice(0, 100));
-      };
-
-      const handleFilteredActivity = (activities) => {
-        const formattedLogs = activities.map(activity => ({
-          timestamp: activity.timestamp,
-          type: activity.type,
-          data: activity.message || activity.data
-        }));
-        setRelayLogs(formattedLogs.slice(0, 100));
-      };
-
-      socket.socket.on('initial_activity', handleInitialActivity);
-      socket.socket.on('filtered_activity', handleFilteredActivity);
-
-      // Handle initial state when service reconnects
-      const handleInitialState = (data) => {
-        console.log('🔄 Initial state received:', data);
-
-        // Update microservice health from services data
-        if (data.services && Array.isArray(data.services)) {
-          const healthState = {};
-          data.services.forEach(service => {
-            healthState[service.name] = {
-              serviceName: service.name,
-              status: service.status === 'running' ? 'healthy' : 'unhealthy',
-              lastChecked: new Date(),
-              error: service.error || null,
-              port: service.port,
-              details: service
-            };
-          });
-          setMicroserviceHealth(healthState);
-          console.log('✅ Restored microservice health from initial state');
-        }
-
-        // Update activity logs from initial state
-        if (data.activity && Array.isArray(data.activity)) {
-          const formattedLogs = data.activity.map(activity => ({
-            timestamp: activity.timestamp,
-            type: activity.type,
-            data: activity.message || activity.data
-          }));
-          setRelayLogs(formattedLogs.slice(-100));
-          console.log('✅ Restored activity logs from initial state');
-        }
-
-        // Restore quotes from initial state if available
-        if (data.quotes && Object.keys(data.quotes).length > 0) {
-          setQuotes(data.quotes);
-          console.log('✅ Restored quotes from initial state:', Object.keys(data.quotes));
-        } else {
-          // Fallback to loading quotes if not in initial state
-          loadQuotes();
-          console.log('🔄 Loading quotes since not in initial state');
-        }
-      };
-
-      socket.socket.on('initial_state', handleInitialState);
-
-      // Handle kill switch changes
-      const handleKillSwitchChanged = (data) => {
-        setTradingEnabled(data.enabled);
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'kill_switch',
-          data: data.enabled
-            ? '🟢 Trading ENABLED'
-            : '🔴 Trading DISABLED (Kill Switch Active)'
-        }].slice(0, 100));
-      };
-
-      const handleWebhookBlocked = (data) => {
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'webhook',
-          data: `🚫 BLOCKED: ${data.signal.action} ${data.signal.quantity} ${data.signal.symbol} (${data.reason})`,
-          rawData: data.rawData,
-          result: { blocked: true, reason: data.reason }
-        }].slice(0, 100));
-      };
-
-      socket.socket.on('kill_switch_changed', handleKillSwitchChanged);
-      socket.socket.on('webhook_blocked', handleWebhookBlocked);
-
-      // Data collector real-time updates
-      const handleDataCollectorInitialized = (data) => {
-        console.log('Data collector initialized:', data);
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'system',
-          data: `📊 Data collector started with ${data.accountsCount} accounts`
-        }].slice(0, 100));
-      };
-
-      const handleAccountDataUpdated = (data) => {
-        console.log('Account data updated:', data);
-
-        // Update the appropriate state based on data type
-        if (data.dataType === 'balance' && data.accountId === account?.id) {
-          setAccountSummary(prev => prev ? { ...prev, ...data.data, cached: true, dataAge: 0 } : null);
-        } else if (data.dataType === 'positions' && data.accountId === account?.id) {
-          setPositions(data.data || []);
-        } else if (data.dataType === 'orders' && data.accountId === account?.id) {
-          console.log('🔍 Orders WebSocket update received:', data.data);
-          if (data.data && data.data.length > 0) {
-            console.log('🔍 First order in update:', JSON.stringify(data.data[0], null, 2));
-          }
-          console.log('✅ Setting orders state with enriched WebSocket data');
-          setOrders(data.data || []);
-        }
-
-        setLastUpdate(new Date());
-      };
-
-      const handlePollingModeChanged = (data) => {
-        console.log('Polling mode changed:', data);
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'system',
-          data: `🔄 Polling mode changed for account ${data.accountId}: ${data.oldMode || data.mode} → ${data.newMode || data.mode} (${data.reason})`
-        }].slice(0, 100));
-      };
-
-      const handleRateLimitWarning = (data) => {
-        console.log('Rate limit warning:', data);
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'system',
-          data: `⚠️ Rate limit protection activated for account ${data.accountId}`
-        }].slice(0, 100));
-      };
-
-      // Subscribe to data collector events
-      socket.socket.on('data_collector_initialized', handleDataCollectorInitialized);
-      socket.socket.on('account_data_updated', handleAccountDataUpdated);
-      socket.socket.on('polling_mode_changed', handlePollingModeChanged);
-      socket.socket.on('rate_limit_warning', handleRateLimitWarning);
-
-      // Service restart events
-      const handleServiceRestartInitiated = (data) => {
-        console.log('Service restart initiated:', data);
-        setMicroserviceHealth(prev => ({
-          ...prev,
-          [data.service]: {
-            ...prev[data.service],
-            status: 'restarting'
-          }
-        }));
-      };
-
-      const handleServiceRestartSuccess = (data) => {
-        console.log('Service restart success:', data);
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'system',
-          data: `✅ ${data.service.replace('-', ' ')} restart initiated successfully`
-        }].slice(0, 100));
-      };
-
-      const handleServiceRestartFailed = (data) => {
-        console.log('Service restart failed:', data);
-        setMicroserviceHealth(prev => ({
-          ...prev,
-          [data.service]: {
-            ...prev[data.service],
-            status: 'unhealthy'
-          }
-        }));
-        setRelayLogs(prev => [...prev, {
-          timestamp: data.timestamp,
-          type: 'stderr',
-          data: `❌ Failed to restart ${data.service.replace('-', ' ')}: ${data.error}`
-        }].slice(0, 100));
-      };
-
-      socket.socket.on('service_restart_initiated', handleServiceRestartInitiated);
-      socket.socket.on('service_restart_success', handleServiceRestartSuccess);
-      socket.socket.on('service_restart_failed', handleServiceRestartFailed);
-
-      // Signal generator health updates
-      const handleSignalGeneratorHealth = (data) => {
-        setSignalGeneratorConnections(prev => ({ ...prev, ...data }));
-      };
-      socket.socket.on('signal_generator_health', handleSignalGeneratorHealth);
-
-      // Signal events
-      const handleSignalReceived = (signalData) => {
-        console.log('📡 Signal received:', signalData);
-        setSignals(prev => [signalData, ...prev.slice(0, 49)]); // Keep last 50 signals
-      };
-
-      socket.socket.on('signal_received', handleSignalReceived);
-
-      // Position real-time updates
-      const handlePositionUpdate = (data) => {
-        console.log('💼 Position update received via WebSocket:', data);
-        // Refresh critical status to get updated positions
-        loadCriticalStatus();
-        // Also refresh account summary (balance/equity/day P&L) when positions change
-        loadAccountSummary();
-      };
-
-      const handlePositionRealtimeUpdate = (data) => {
-        console.log('💰 Position P&L update received via WebSocket:', data);
-        // Update the specific position's P&L in criticalStatus without full reload
-        setCriticalStatus(prev => {
-          if (!prev || !prev.openPositions) return prev;
-
-          const updatedPositions = prev.openPositions.map(pos => {
-            if (pos.symbol === data.symbol) {
-              return {
-                ...pos,
-                currentPrice: data.currentPrice,
-                unrealizedPnL: data.unrealizedPnL,
-                lastUpdate: data.lastUpdate
-              };
-            }
-            return pos;
-          });
-
-          return {
-            ...prev,
-            openPositions: updatedPositions
-          };
-        });
-      };
-
-      socket.socket.on('position_update', handlePositionUpdate);
-      socket.socket.on('position_realtime_update', handlePositionRealtimeUpdate);
-
-      // Position closed event - refresh account summary to get updated balance/equity
-      const handlePositionClosed = (data) => {
-        console.log('🔒 Position CLOSED event received:', data);
-        // Refresh critical status and account summary
-        loadCriticalStatus();
-        loadAccountSummary();
-      };
-      socket.socket.on('position_closed', handlePositionClosed);
-
-      return () => {
-        socket.socket.off('relay_status_change', handleRelayStatusChange);
-        socket.socket.off('relay_started', handleRelayStarted);
-        socket.socket.off('relay_exited', handleRelayExited);
-        socket.socket.off('relay_error', handleRelayError);
-        socket.socket.off('relay_url_detected', handleRelayUrlDetected);
-        socket.socket.off('relay_output', handleRelayOutput);
-        socket.socket.off('webhook_received', handleWebhookReceived);
-        socket.socket.off('webhook_error', handleWebhookError);
-        socket.socket.off('market_data', handleMarketData);
-        socket.socket.off('gex_levels', handleGexLevelsUpdate);
-        socket.socket.off('critical_status_update', handleCriticalStatusUpdate);
-        socket.socket.off('initial_activity', handleInitialActivity);
-        socket.socket.off('filtered_activity', handleFilteredActivity);
-        socket.socket.off('initial_state', handleInitialState);
-        socket.socket.off('kill_switch_changed', handleKillSwitchChanged);
-        socket.socket.off('webhook_blocked', handleWebhookBlocked);
-        socket.socket.off('data_collector_initialized', handleDataCollectorInitialized);
-        socket.socket.off('account_data_updated', handleAccountDataUpdated);
-        socket.socket.off('polling_mode_changed', handlePollingModeChanged);
-        socket.socket.off('rate_limit_warning', handleRateLimitWarning);
-        socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
-        socket.socket.off('service_restart_success', handleServiceRestartSuccess);
-        socket.socket.off('service_restart_failed', handleServiceRestartFailed);
-        socket.socket.off('signal_generator_health', handleSignalGeneratorHealth);
-        socket.socket.off('signal_received', handleSignalReceived);
-        socket.socket.off('position_update', handlePositionUpdate);
-        socket.socket.off('position_realtime_update', handlePositionRealtimeUpdate);
-        socket.socket.off('position_closed', handlePositionClosed);
-      };
-    }
-  }, [socket]);
-
-  // Load dashboard data immediately when account is available
-  useEffect(() => {
-    if (account?.id) {
-      // Try to load data immediately - our cached API endpoints will return quickly
-      loadDashboardData();
-    }
-  }, [account]);
-
-  // Polling for live updates (disabled when using cached data)
-  useEffect(() => {
-    // Don't poll if we have cached data - let background data collector handle updates
-    const hasRecentCachedData = accountSummary?.cached && accountSummary?.dataAge && accountSummary.dataAge < 5 * 60 * 1000;
-
-    if (pollingEnabled && account?.id && tradovateStatus === 'connected' && !hasRecentCachedData) {
-      console.log('Setting up polling for dashboard data...');
-      const intervalId = setInterval(() => {
-        console.log('Polling for dashboard data...');
-        loadDashboardData();
-        setLastPollingUpdate(new Date());
-      }, 120000); // Poll every 2 minutes (less frequent to avoid timeouts)
-
-      setPollingInterval(intervalId);
-      return () => clearInterval(intervalId);
-    } else if (pollingInterval) {
-      console.log('Disabling polling - using cached data from background collector');
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
-    }
-  }, [account, tradovateStatus, pollingEnabled, accountSummary]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
       }
-    };
-  }, [pollingInterval]);
-
-  // Effect to manage intelligent polling based on active orders/positions
-  useEffect(() => {
-    if (!criticalStatus) return;
-
-    const hasActiveItems = criticalStatus.openOrders?.length > 0 || criticalStatus.openPositions?.length > 0;
-
-    if (hasActiveItems && !criticalStatusInterval) {
-      // Start polling if we have active items but no interval (WebSocket fallback)
-      console.log('🎯 Starting fallback polling - active orders/positions detected');
-      const interval = setInterval(() => {
-        loadCriticalStatus();
-        checkMicroserviceHealth();
-      }, 60000); // Every 60 seconds as fallback (WebSocket handles real-time updates)
-      setCriticalStatusInterval(interval);
-    } else if (!hasActiveItems && criticalStatusInterval) {
-      // Stop polling if no active items
-      console.log('🎯 Stopping polling - no active orders/positions');
-      clearInterval(criticalStatusInterval);
-      setCriticalStatusInterval(null);
     }
-  }, [criticalStatus?.openOrders?.length, criticalStatus?.openPositions?.length]);
+  };
 
-  // Try to load accounts even when Tradovate is not connected
   const loadAccountsIfNeeded = async () => {
     if (!account && onAccountsLoaded) {
       try {
         const accountsResponse = await api.getAccounts();
         const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
-        if (accounts.length > 0) {
-          onAccountsLoaded(accounts);
-        }
+        if (accounts.length > 0) onAccountsLoaded(accounts);
       } catch (error) {
-        // Accounts failed to load, which is fine - Tradovate might not be connected
         console.log('Accounts not available:', error.message);
       }
     }
   };
 
-  const checkTradovateConnection = async () => {
-    try {
-      setIsTradovateChecking(true);
-      setTradovateStatus('checking');
-      const healthResponse = await api.getTradingHealth();
-
-      console.log('🏥 Health response:', healthResponse);
-
-      if (healthResponse.authenticated) {
-        setTradovateStatus('connected');
-      } else {
-        // Set status based on the specific authentication status
-        if (healthResponse.authenticationStatus === 'failed') {
-          setTradovateStatus('auth_failed');
-        } else {
-          setTradovateStatus('disconnected');
-        }
-      }
-
-      // Store detailed error info for display
-      setTradovateError(healthResponse.authenticationError || null);
-
-    } catch (error) {
-      console.error('Tradovate connection check failed:', error);
-      setTradovateStatus('error');
-      setTradovateError(error.message);
-    } finally {
-      setIsTradovateChecking(false);
-    }
-  };
-
-  // Real-time updates via WebSocket
-  useEffect(() => {
-    if (socket?.isConnected && account?.id) {
-      // Subscribe to account-specific updates using the hook's method
-      socket.subscribeToAccount(account.id);
-    }
-  }, [socket, account]);
-
-  const loadCriticalStatus = async () => {
-    try {
-      console.log('🎯 Loading critical status...');
-      const response = await api.getCriticalStatus();
-      console.log('🎯 Critical status response:', response);
-
-      // Always update the first time or if data changed
-      setCriticalStatus(prev => {
-        if (!prev) {
-          console.log('🎯 Setting initial critical status');
-          return response;
-        }
-
-        const newData = JSON.stringify(response);
-        const prevData = JSON.stringify(prev);
-        if (newData !== prevData) {
-          console.log('🎯 Critical status updated');
-          return response;
-        }
-        return prev;
-      });
-    } catch (error) {
-      console.error('❌ Failed to load critical status:', error);
-      console.error('❌ Error details:', error.response?.data || error.message);
-      setCriticalStatusError(error.message || 'Failed to load trading status');
-    }
-  };
-
-  const loadQuotes = async () => {
-    try {
-      const quotesData = await api.getQuotes?.() || {};
-      setQuotes(quotesData);
-      console.log('📊 Loaded quotes:', Object.keys(quotesData));
-    } catch (error) {
-      console.error('Failed to load quotes:', error.message);
-      // Don't fail the dashboard if quotes fail
-    }
-  };
-
-  const loadSignals = async () => {
-    try {
-      const signalsData = await api.getSignals();
-      setSignals(signalsData || []);
-      console.log('📡 Loaded signals:', signalsData?.length || 0);
-    } catch (error) {
-      console.error('Failed to load signals:', error.message);
-      // Don't fail the dashboard if signals fail
-    }
-  };
-
   const loadDashboardData = async () => {
-    // Prevent concurrent loading
-    if (isLoading) {
-      console.log('Dashboard data already loading, skipping...');
-      return;
-    }
-
+    if (isLoading) return;
     try {
       setIsLoading(true);
-
-      // Load critical status first (most important)
-      await loadCriticalStatus();
-
-      // Load account summary
       await loadAccountSummary();
-
-      // Load initial quotes
       await loadQuotes();
-
-      // Load signals
-      await loadSignals();
-
-      // Load positions/orders together (they're related)
-      await loadOrdersAndPositions();
-
-      // Load P&L data (depends on account summary)
-
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
       setIsLoading(false);
-      setLastUpdate(new Date());
     }
   };
 
-  // Fetch GEX data from both sources
   const fetchGexData = async () => {
     try {
       const [cboe, tradier] = await Promise.all([
@@ -975,355 +112,171 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
       ]);
       setGexData({ cboe, tradier });
     } catch (err) {
-      console.error('Error fetching GEX data:', err);
+      console.error('Error fetching NQ GEX data:', err);
     }
   };
 
-  // Fetch strategy status from signal-generator
+  const fetchEsGexData = async () => {
+    try {
+      const [cboe, tradier] = await Promise.all([
+        api.getEsGexLevels().catch(() => null),
+        api.getEsTradierGexLevels().catch(() => null)
+      ]);
+      setEsGexData({ cboe, tradier });
+    } catch (err) {
+      console.error('Error fetching ES GEX data:', err);
+    }
+  };
+
   const fetchStrategyStatus = async () => {
     try {
       const response = await api.getStrategyStatus();
-      if (response?.data) {
-        setStrategyStatus(response.data);
-      }
+      if (response?.data) setStrategyStatus(response.data);
     } catch (err) {
-      console.error('Error fetching strategy status:', err);
+      console.error('Error fetching NQ strategy status:', err);
     }
   };
 
-  const loadAccountSummary = async () => {
+  const fetchEsStrategyStatus = async () => {
     try {
-      const response = await api.getAccountSummary(account.id);
-      setAccountSummary(response.summary);
-    } catch (error) {
-      console.error('Failed to load account summary:', error);
+      const response = await api.getESCrossSignalStatus();
+      if (response?.data) setEsStrategyStatus(response.data);
+    } catch (err) {
+      console.error('Error fetching ES strategy status:', err);
+    }
+  };
 
-      // If it's a 503 (service unavailable), it means cache is warming up
-      if (error.response?.status === 503) {
-        console.log('Cache warming up, will retry soon...');
-        // Set a placeholder summary to show the UI isn't broken
-        setAccountSummary({
-          accountId: account.id,
-          balance: 0,
-          equity: 0,
-          margin: 0,
-          availableFunds: 0,
-          dayPnL: 0,
-          dayPnLPercent: 0,
-          totalPositions: 0,
-          longPositions: 0,
-          shortPositions: 0,
-          workingOrders: 0,
-          tradesExecutedToday: 0,
-          cached: false,
-          empty: true,
-          loading: true
-        });
+  // --- Mount effect ---
+  useEffect(() => {
+    setIsLoading(false);
+
+    loadAccountsIfNeeded().catch(error => console.error('Background loading error:', error));
+
+    onTradovateCheck?.().catch(console.error);
+
+    fetchGexData();
+    fetchEsGexData();
+    const gexInterval = setInterval(() => { fetchGexData(); fetchEsGexData(); }, 3 * 60 * 1000);
+
+    fetchStrategyStatus();
+    fetchEsStrategyStatus();
+    const strategyInterval = setInterval(() => { fetchStrategyStatus(); fetchEsStrategyStatus(); }, 10 * 1000);
+
+    return () => {
+      clearInterval(gexInterval);
+      clearInterval(strategyInterval);
+    };
+  }, []);
+
+  // Socket reconnection
+  useEffect(() => {
+    if (socket?.isConnected) {
+      Promise.all([loadQuotes(), onRefresh()]).catch(console.error);
+    }
+  }, [socket?.isConnected]);
+
+  // --- WebSocket listeners (only data the Dashboard needs) ---
+  useEffect(() => {
+    if (!socket?.socket) return;
+
+    const handleMarketData = (data) => {
+      setQuotes(prev => {
+        const key = data.baseSymbol || data.symbol;
+        const existing = prev[key] || {};
+        const incoming = {};
+        if (data.symbol != null) incoming.symbol = data.symbol;
+        if (data.baseSymbol != null) incoming.baseSymbol = data.baseSymbol;
+        if (data.close != null) incoming.close = data.close;
+        if (data.volume != null) incoming.volume = data.volume;
+        if (data.timestamp != null) incoming.timestamp = data.timestamp;
+        if (data.candleTimestamp != null) incoming.candleTimestamp = data.candleTimestamp;
+        if (data.open != null) incoming.open = data.open;
+        if (data.high != null) incoming.high = data.high;
+        if (data.low != null) incoming.low = data.low;
+        if (data.sessionOpen != null) incoming.sessionOpen = data.sessionOpen;
+        if (data.sessionHigh != null) incoming.sessionHigh = data.sessionHigh;
+        if (data.sessionLow != null) incoming.sessionLow = data.sessionLow;
+        if (data.prevClose != null) incoming.prevClose = data.prevClose;
+        if (data.change != null) incoming.change = data.change;
+        if (data.changePercent != null) incoming.changePercent = data.changePercent;
+        const merged = { ...existing, ...incoming };
+        const updates = { ...prev, [data.symbol]: merged };
+        if (data.baseSymbol) updates[data.baseSymbol] = merged;
+        return updates;
+      });
+    };
+
+    const handleGexLevelsUpdate = (data) => {
+      if (data) {
+        setGexData(prev => ({ cboe: data.cboe || prev.cboe, tradier: data.tradier || prev.tradier }));
       }
-      // Don't throw - let other loads continue
-    }
-  };
+    };
 
-  const loadOrdersAndPositions = async () => {
-    try {
-      const [positionsResponse, ordersResponse] = await Promise.allSettled([
-        api.getAccountPositions(account.id),
-        api.getAccountOrders(account.id)
-      ]);
-
-      if (positionsResponse.status === 'fulfilled') {
-        setPositions(positionsResponse.value.positions || []);
+    const handleInitialState = (data) => {
+      if (data.quotes && Object.keys(data.quotes).length > 0) {
+        setQuotes(data.quotes);
       } else {
-        console.error('Failed to load positions:', positionsResponse.reason);
+        loadQuotes();
       }
+    };
 
-      if (ordersResponse.status === 'fulfilled') {
-        const apiOrders = ordersResponse.value.orders || [];
-
-        // Preserve enriched data from WebSocket if available
-        setOrders(prevOrders => {
-          // If we have previous orders with enriched data (limitPrice, orderType), preserve them
-          if (prevOrders.length > 0 && prevOrders.some(o => o.limitPrice && o.orderType)) {
-            console.log('🔒 Preserving enriched order data from WebSocket, ignoring API refresh');
-            return prevOrders;
-          }
-          // Otherwise use API data (for initial load)
-          console.log('📋 Loading orders from API (initial load)');
-          return apiOrders;
-        });
-      } else {
-        console.error('Failed to load orders:', ordersResponse.reason);
+    const handleAccountDataUpdated = (data) => {
+      if (data.dataType === 'balance' && data.accountId === account?.id) {
+        setAccountSummary(prev => prev ? { ...prev, ...data.data, cached: true, dataAge: 0 } : null);
       }
-    } catch (error) {
-      console.error('Failed to load positions/orders:', error);
-      // Don't throw - let other loads continue
+    };
+
+    const handlePositionChange = () => {
+      loadAccountSummary();
+    };
+
+    socket.socket.on('market_data', handleMarketData);
+    socket.socket.on('gex_levels', handleGexLevelsUpdate);
+    socket.socket.on('initial_state', handleInitialState);
+    socket.socket.on('account_data_updated', handleAccountDataUpdated);
+    socket.socket.on('position_update', handlePositionChange);
+    socket.socket.on('position_closed', handlePositionChange);
+
+    return () => {
+      socket.socket.off('market_data', handleMarketData);
+      socket.socket.off('gex_levels', handleGexLevelsUpdate);
+      socket.socket.off('initial_state', handleInitialState);
+      socket.socket.off('account_data_updated', handleAccountDataUpdated);
+      socket.socket.off('position_update', handlePositionChange);
+      socket.socket.off('position_closed', handlePositionChange);
+    };
+  }, [socket, account]);
+
+  // Load dashboard data when account becomes available
+  useEffect(() => {
+    if (account?.id) loadDashboardData();
+  }, [account]);
+
+  // Subscribe to account updates
+  useEffect(() => {
+    if (socket?.isConnected && account?.id) {
+      socket.subscribeToAccount(account.id);
     }
-  };
+  }, [socket, account]);
 
-
-  // Check relay status
-  const checkRelayStatus = async () => {
-    try {
-      const response = await api.getRelayStatus();
-      if (response.success) {
-        setRelayStatus(response.status);
-      }
-    } catch (error) {
-      console.error('Failed to check relay status:', error);
-      setRelayStatus(prev => ({ ...prev, lastError: error.message }));
+  // Polling for live updates
+  useEffect(() => {
+    const hasRecentCachedData = accountSummary?.cached && accountSummary?.dataAge && accountSummary.dataAge < 5 * 60 * 1000;
+    if (account?.id && tradovateStatus === 'connected' && !hasRecentCachedData) {
+      const intervalId = setInterval(() => loadDashboardData(), 120000);
+      setPollingInterval(intervalId);
+      return () => clearInterval(intervalId);
+    } else if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
     }
-  };
+  }, [account, tradovateStatus, accountSummary]);
 
-  // Relay control functions
-  const handleStartRelay = async () => {
-    setIsRelayLoading(true);
-    try {
-      const response = await api.startRelay();
-      if (response.success) {
-        setRelayStatus(response.status);
-      } else {
-        setRelayStatus(prev => ({ ...prev, lastError: response.message }));
-      }
-    } catch (error) {
-      console.error('Failed to start relay:', error);
-      setRelayStatus(prev => ({ ...prev, lastError: error.message }));
-    } finally {
-      setIsRelayLoading(false);
-    }
-  };
+  useEffect(() => {
+    return () => { if (pollingInterval) clearInterval(pollingInterval); };
+  }, [pollingInterval]);
 
-  const handleStopRelay = async () => {
-    setIsRelayLoading(true);
-    try {
-      const response = await api.stopRelay();
-      if (response.success) {
-        setRelayStatus(response.status);
-      } else {
-        setRelayStatus(prev => ({ ...prev, lastError: response.message }));
-      }
-    } catch (error) {
-      console.error('Failed to stop relay:', error);
-      setRelayStatus(prev => ({ ...prev, lastError: error.message }));
-    } finally {
-      setIsRelayLoading(false);
-    }
-  };
-
-  const handleRestartRelay = async () => {
-    setIsRelayLoading(true);
-    try {
-      const response = await api.restartRelay();
-      if (response.success) {
-        setRelayStatus(response.status);
-      } else {
-        setRelayStatus(prev => ({ ...prev, lastError: response.message }));
-      }
-    } catch (error) {
-      console.error('Failed to restart relay:', error);
-      setRelayStatus(prev => ({ ...prev, lastError: error.message }));
-    } finally {
-      setIsRelayLoading(false);
-    }
-  };
-
-  const handleReSync = async () => {
-    setIsReSyncing(true);
-    try {
-      const response = await api.reSync();
-      if (response.success) {
-        // Add success message to activity log
-        setRelayLogs(prev => [...prev, {
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          data: '🔄 Re-sync completed - fresh data loaded from Tradovate'
-        }].slice(0, 100));
-
-        // Refresh the dashboard with fresh data
-        setTimeout(() => {
-          loadCriticalStatus();
-          if (tradovateStatus === 'connected') {
-            loadDashboardData();
-          }
-        }, 1000); // Small delay to let the backend process the fresh data
-      }
-    } catch (error) {
-      console.error('Re-sync failed:', error);
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'stderr',
-        data: `❌ Re-sync failed: ${error.message}`
-      }].slice(0, 100));
-    } finally {
-      setIsReSyncing(false);
-    }
-  };
-
-  const handleFullSync = async (dryRun = false) => {
-    setIsFullSyncing(true);
-    try {
-      const response = await api.fullSync({ dryRun });
-
-      if (response.success) {
-        const { stats } = response;
-        // Add success message to activity log with stats
-        setRelayLogs(prev => [...prev, {
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          data: `🔄 Full Tradovate sync ${dryRun ? '(DRY RUN) ' : ''}completed - ${stats.ordersReconciled} orders, ${stats.positionsReconciled} positions reconciled, ${stats.signalMappingsRemoved} stale mappings cleaned`
-        }].slice(0, 100));
-
-        // If it was a real sync (not dry run), refresh dashboard data
-        if (!dryRun) {
-          setTimeout(() => {
-            loadCriticalStatus();
-            if (tradovateStatus === 'connected') {
-              loadDashboardData();
-            }
-          }, 1500); // Slightly longer delay for full sync
-        }
-      }
-    } catch (error) {
-      console.error('Full sync failed:', error);
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'stderr',
-        data: `❌ Full Tradovate sync failed: ${error.message}`
-      }].slice(0, 100));
-    } finally {
-      setIsFullSyncing(false);
-    }
-  };
-
-  const handleServiceRestart = async (serviceName) => {
-    // Show confirmation dialog
-    const displayName = serviceName.replace('-', ' ');
-    const confirmed = window.confirm(
-      `⚠️ Are you sure you want to restart the ${displayName}?\n\n` +
-      `This will cause temporary service interruption.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      // Update the service status to restarting
-      setMicroserviceHealth(prev => ({
-        ...prev,
-        [serviceName]: {
-          ...prev[serviceName],
-          status: 'restarting'
-        }
-      }));
-
-      // Add to activity log immediately
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'system',
-        data: `🔄 Restarting ${displayName} (requested by dashboard)`
-      }].slice(0, 100));
-
-      // Call restart API
-      const response = await api.restartService(serviceName);
-
-      if (response.success) {
-        // Add success message to activity log
-        setRelayLogs(prev => [...prev, {
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          data: `✅ ${displayName} restart initiated successfully`
-        }].slice(0, 100));
-
-        // For monitoring-service, show special message since we'll lose connection
-        if (serviceName === 'monitoring-service') {
-          setRelayLogs(prev => [...prev, {
-            timestamp: new Date().toISOString(),
-            type: 'system',
-            data: `📡 Monitoring service restarting - dashboard will reconnect automatically`
-          }].slice(0, 100));
-        }
-
-        // Start checking service health more frequently during restart
-        setTimeout(() => {
-          checkMicroserviceHealth();
-        }, 5000);
-
-        setTimeout(() => {
-          checkMicroserviceHealth();
-        }, 15000);
-
-      }
-    } catch (error) {
-      console.error(`Failed to restart ${serviceName}:`, error);
-
-      // Reset status on error
-      setMicroserviceHealth(prev => ({
-        ...prev,
-        [serviceName]: {
-          ...prev[serviceName],
-          status: 'unhealthy'
-        }
-      }));
-
-      // Add error to activity log
-      setRelayLogs(prev => [...prev, {
-        timestamp: new Date().toISOString(),
-        type: 'stderr',
-        data: `❌ Failed to restart ${displayName}: ${error.message}`
-      }].slice(0, 100));
-
-      alert(`Failed to restart ${displayName}: ${error.message}`);
-    }
-  };
-
-  const handleRefresh = () => {
-    checkTradovateConnection();
-    checkRelayStatus();
-    loadCriticalStatus(); // Always refresh critical status
-    if (tradovateStatus === 'connected') {
-      loadDashboardData();
-    }
-    onRefresh?.();
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'connected': return 'text-green-400';
-      case 'checking': return 'text-yellow-400';
-      case 'disconnected': return 'text-orange-400';
-      case 'auth_failed': return 'text-red-400';
-      case 'error': return 'text-red-400';
-      case 'disabled': return 'text-gray-500';
-      default: return 'text-gray-400';
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'connected': return '✅';
-      case 'checking': return '🔄';
-      case 'disconnected': return '⚠️';
-      case 'auth_failed': return '🚫';
-      case 'error': return '❌';
-      case 'disabled': return '🔒';
-      default: return '❓';
-    }
-  };
-
-  const getStatusMessage = (status) => {
-    switch (status) {
-      case 'connected': return 'Connected & Authenticated';
-      case 'checking': return 'Checking Connection';
-      case 'disconnected': return 'Not Connected';
-      case 'auth_failed': return 'Authentication Failed';
-      case 'error': return 'Connection Error';
-      case 'disabled': return 'Temporarily Disabled';
-      default: return 'Unknown Status';
-    }
-  };
-
-
-  // Only show loading spinner if we have no account and we're actually loading
+  // Loading state
   if (isLoading && !account && !accountSummary) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1336,786 +289,68 @@ const Dashboard = ({ account, socket, onRefresh, onAccountsLoaded }) => {
   }
 
   return (
-    <>
-    <div className="flex flex-col lg:flex-row h-full overflow-hidden relative">
-      {/* Main Content Area - 2/3 width on desktop, full width on mobile */}
-      <div className="flex-[2] overflow-y-auto">
-        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-
-
-          {/* Enhanced Trading Status Panel */}
-          <EnhancedTradingStatus
-            socket={socket}
-            onPositionClosed={loadAccountSummary}
-            accountSummary={accountSummary}
-          />
-
-
-          {/* Market Data Panels - 3 column grid */}
-          {account && (
-            <>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <QuotesPanel
-                  quotes={quotes}
-                  isLoading={false}
-                />
-                <IVSkewPanel socket={socket} quotes={quotes} />
-                <GexComparisonPanel gexData={gexData} onRefresh={fetchGexData} />
-              </div>
-
-              {/* NQ vs GEX Levels Chart - Full Width with Strategy Status */}
-              <GexChart
-                nqQuote={quotes.NQ || quotes.MNQ}
-                height={600}
-                gexData={gexData}
-                strategyStatus={strategyStatus}
-              />
-
-              {/* Platform Status - Full Width */}
-              <div>
-                {/* Platform Status */}
-                <div className="bg-gray-800 rounded-lg p-6">
-                  <div className="mb-4">
-                    {/* First line: Platform Status title and trading toggle */}
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-lg font-semibold text-white">📡 Platform Status</h3>
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <span className="text-sm text-gray-300">Trading:</span>
-                        <button
-                          onClick={handleKillSwitchToggle}
-                          disabled={isKillSwitchLoading}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                            tradingEnabled ? 'bg-green-600' : 'bg-red-600'
-                          }`}
-                          role="switch"
-                          aria-checked={tradingEnabled}
-                          aria-label={`Trading is currently ${tradingEnabled ? 'enabled' : 'disabled'}`}
-                        >
-                          <span className="sr-only">Toggle trading</span>
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
-                              tradingEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                        <span className={`text-xs font-medium ${
-                          tradingEnabled ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {isKillSwitchLoading ? (
-                            <span className="animate-spin">⏳</span>
-                          ) : tradingEnabled ? (
-                            'ON'
-                          ) : (
-                            'OFF'
-                          )}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Second line: Margins, Position Sizing, and Full Sync buttons aligned right */}
-                    <div className="flex justify-end">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setShowMarginModal(true)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0"
-                        >
-                          💰 Margins
-                        </button>
-                        <button
-                          onClick={() => setShowPositionSizingModal(true)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0"
-                        >
-                          ⚙️ Position Sizing
-                        </button>
-                        <button
-                          onClick={() => handleFullSync(false)}
-                          disabled={isFullSyncing || tradovateStatus !== 'connected'}
-                          className={`px-3 py-1 text-sm rounded transition-colors flex-shrink-0 ${
-                            isFullSyncing || tradovateStatus !== 'connected'
-                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                              : 'bg-purple-600 hover:bg-purple-700 text-white'
-                          }`}
-                          title={tradovateStatus !== 'connected' ? 'Tradovate must be connected' : 'Reconcile orders/positions with Tradovate'}
-                        >
-                          {isFullSyncing ? '⏳ Syncing...' : '🔄 Full Sync'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">Trading Status</h4>
-                      <p className={`text-sm font-bold ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                        {tradingEnabled ? '🟢 ENABLED' : '🔴 DISABLED'}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {tradingEnabled ? 'Live trades active' : 'Kill switch active'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">Position Sizing</h4>
-                      <p className="text-sm text-blue-400 font-semibold">
-                        {positionSizingSettings?.method === 'fixed'
-                          ? `📌 ${positionSizingSettings?.fixedQuantity || 1} ${
-                              positionSizingSettings?.contractType === 'full' ? 'Full' :
-                              positionSizingSettings?.contractType === 'micro' ? 'Micro' : ''
-                            } Contracts`
-                          : `💰 ${positionSizingSettings?.riskPercentage || 10}% Risk`
-                        }
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {positionSizingSettings?.method === 'fixed'
-                          ? `Fixed quantity${positionSizingSettings?.contractType !== 'auto' ? ` (${positionSizingSettings?.contractType} override)` : ''}`
-                          : 'Risk-based sizing'
-                        }
-                      </p>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">WebSocket</h4>
-                      <p className={`text-sm ${socket?.isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                        {socket?.isConnected ? '✅ Connected' : '❌ Disconnected'}
-                      </p>
-                    </div>
-
-                    {/* Microservices Health Grid (excluding signal-generator) */}
-                    {Object.entries(microserviceHealth)
-                      .filter(([serviceName]) => serviceName !== 'signal-generator')
-                      .map(([serviceName, health]) => (
-                      <div key={serviceName} className="bg-gray-700 p-4 rounded relative">
-                        <h4 className="font-semibold text-white mb-2 capitalize">
-                          {serviceName.replace('-', ' ')}
-                        </h4>
-                        <p className={`text-sm font-bold ${
-                          health.status === 'healthy' ? 'text-green-400' :
-                          health.status === 'unhealthy' ? 'text-red-400' :
-                          health.status === 'restarting' ? 'text-yellow-400' :
-                          'text-yellow-400'
-                        }`}>
-                          {health.status === 'healthy' ? '🟢 Healthy' :
-                           health.status === 'unhealthy' ? '🔴 Down' :
-                           health.status === 'restarting' ? '🔄 Restarting' :
-                           '🟡 Unknown'}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {health.lastChecked ?
-                            `Last check: ${health.lastChecked.toLocaleTimeString()}` :
-                            'Not checked'}
-                        </p>
-                        {/* Show restart button only in production */}
-                        {process.env.REACT_APP_ENVIRONMENT === 'production' && (
-                          <button
-                            onClick={() => handleServiceRestart(serviceName)}
-                            disabled={health.status === 'restarting'}
-                            className={`absolute top-2 right-2 px-2 py-1 text-xs rounded transition-colors ${
-                              health.status === 'restarting'
-                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white'
-                            }`}
-                            title={health.status === 'restarting' ? 'Restart in progress...' : `Restart ${serviceName}`}
-                          >
-                            {health.status === 'restarting' ? '⏳' : '🔄'}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Signal Generator - Enhanced Card with Connection Status */}
-                    {microserviceHealth['signal-generator'] && (
-                      <div className={`bg-gray-700 p-4 rounded relative ${sgConnectionsExpanded ? 'col-span-full' : ''}`}>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-semibold text-white mb-2">Signal Generator</h4>
-                            <p className={`text-sm font-bold ${
-                              microserviceHealth['signal-generator'].status === 'healthy' ? 'text-green-400' :
-                              microserviceHealth['signal-generator'].status === 'unhealthy' ? 'text-red-400' :
-                              microserviceHealth['signal-generator'].status === 'restarting' ? 'text-yellow-400' :
-                              'text-yellow-400'
-                            }`}>
-                              {microserviceHealth['signal-generator'].status === 'healthy' ? '🟢 Healthy' :
-                               microserviceHealth['signal-generator'].status === 'unhealthy' ? '🔴 Down' :
-                               microserviceHealth['signal-generator'].status === 'restarting' ? '🔄 Restarting' :
-                               '🟡 Unknown'}
-                              {signalGeneratorConnections?.overall && (
-                                <span className={`ml-2 ${
-                                  signalGeneratorConnections.overall === 'healthy' ? 'text-green-400' :
-                                  signalGeneratorConnections.overall === 'degraded' ? 'text-yellow-400' :
-                                  'text-red-400'
-                                }`}>
-                                  ({signalGeneratorConnections.overall === 'healthy' ? 'All Connected' :
-                                    signalGeneratorConnections.overall === 'degraded' ? 'Degraded' : 'Issues'})
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="flex gap-1">
-                            {signalGeneratorConnections && (
-                              <button
-                                onClick={() => setSgConnectionsExpanded(!sgConnectionsExpanded)}
-                                className="text-gray-400 hover:text-white transition-colors p-1"
-                                title={sgConnectionsExpanded ? 'Collapse' : 'Expand connections'}
-                              >
-                                <svg className={`w-4 h-4 transition-transform ${sgConnectionsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </button>
-                            )}
-                            {process.env.REACT_APP_ENVIRONMENT === 'production' && (
-                              <button
-                                onClick={() => handleServiceRestart('signal-generator')}
-                                disabled={microserviceHealth['signal-generator'].status === 'restarting'}
-                                className={`px-2 py-1 text-xs rounded transition-colors ${
-                                  microserviceHealth['signal-generator'].status === 'restarting'
-                                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                }`}
-                                title={microserviceHealth['signal-generator'].status === 'restarting' ? 'Restart in progress...' : 'Restart signal-generator'}
-                              >
-                                {microserviceHealth['signal-generator'].status === 'restarting' ? '⏳' : '🔄'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Connection Badges - Always visible when data available */}
-                        {signalGeneratorConnections?.connections && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              signalGeneratorConnections.connections.tradingview?.connected
-                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                            }`}>
-                              {signalGeneratorConnections.connections.tradingview?.connected ? '✓' : '✗'} TV
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              signalGeneratorConnections.connections.ltMonitor?.connected
-                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                            }`}>
-                              {signalGeneratorConnections.connections.ltMonitor?.connected ? '✓' : '✗'} LT
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected'
-                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                                : signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed'
-                                ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
-                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                            }`}>
-                              {signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? '✓' :
-                               signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Tradier
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              signalGeneratorConnections.connections.cboe?.hasData
-                                ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                                : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                            }`}>
-                              {signalGeneratorConnections.connections.cboe?.hasData ? '✓' : '✗'} CBOE
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Expanded Connection Details */}
-                        {sgConnectionsExpanded && signalGeneratorConnections?.connections && (
-                          <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
-                            {/* TradingView */}
-                            <div className="bg-gray-800/50 rounded p-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-white text-sm font-medium">TradingView WebSocket</span>
-                                <span className={`text-xs ${signalGeneratorConnections.connections.tradingview?.connected ? 'text-green-400' : 'text-red-400'}`}>
-                                  {signalGeneratorConnections.connections.tradingview?.connected ? 'Connected' : 'Disconnected'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                                <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
-                                <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastHeartbeat)}</span></div>
-                                <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
-                                <div><span className="text-gray-400">Symbols:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.symbols?.length || 0}</span></div>
-                              </div>
-                            </div>
-
-                            {/* LT Monitor */}
-                            <div className="bg-gray-800/50 rounded p-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-white text-sm font-medium">LT Monitor WebSocket</span>
-                                <span className={`text-xs ${signalGeneratorConnections.connections.ltMonitor?.connected ? 'text-green-400' : 'text-red-400'}`}>
-                                  {signalGeneratorConnections.connections.ltMonitor?.connected ? 'Connected' : 'Disconnected'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2 mt-1 text-xs">
-                                <div><span className="text-gray-400">Has Levels:</span> <span className="text-white">{signalGeneratorConnections.connections.ltMonitor?.hasLevels ? 'Yes' : 'No'}</span></div>
-                                <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.ltMonitor?.lastHeartbeat)}</span></div>
-                              </div>
-                            </div>
-
-                            {/* Tradier */}
-                            <div className="bg-gray-800/50 rounded p-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-white text-sm font-medium">Tradier Options</span>
-                                <span className={`text-xs ${
-                                  signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? 'text-green-400' :
-                                  signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? 'text-yellow-400' :
-                                  'text-red-400'
-                                }`}>
-                                  {signalGeneratorConnections.connections.tradier?.displayStatus || 'Unknown'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                                <div><span className="text-gray-400">Available:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.available ? 'Yes' : 'No'}</span></div>
-                                <div><span className="text-gray-400">Running:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.running ? 'Yes' : 'No'}</span></div>
-                                <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
-                                <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
-                              </div>
-                            </div>
-
-                            {/* CBOE */}
-                            <div className="bg-gray-800/50 rounded p-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-white text-sm font-medium">CBOE API</span>
-                                <span className={`text-xs ${signalGeneratorConnections.connections.cboe?.hasData ? 'text-green-400' : 'text-red-400'}`}>
-                                  {signalGeneratorConnections.connections.cboe?.hasData ? 'Has Data' : 'No Data'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                                <div><span className="text-gray-400">Enabled:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.enabled ? 'Yes' : 'No'}</span></div>
-                                <div><span className="text-gray-400">Data Age:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.ageMinutes != null ? `${signalGeneratorConnections.connections.cboe.ageMinutes} min` : 'N/A'}</span></div>
-                                <div><span className="text-gray-400">Last Fetch:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.cboe?.lastFetch)}</span></div>
-                              </div>
-                            </div>
-
-                            {/* Hybrid GEX */}
-                            {signalGeneratorConnections.connections.hybridGex && (
-                              <div className="bg-gray-800/50 rounded p-2">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-white text-sm font-medium">Hybrid GEX</span>
-                                  <span className={`text-xs ${signalGeneratorConnections.connections.hybridGex?.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                                    {signalGeneratorConnections.connections.hybridGex?.enabled ? 'Enabled' : 'Disabled'}
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                                  <div><span className="text-gray-400">Primary:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.primarySource || 'N/A'}</span></div>
-                                  <div><span className="text-gray-400">RTH Cache:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.usingRTHCache ? 'Yes' : 'No'}</span></div>
-                                  <div><span className="text-gray-400">Tradier Fresh:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="text-xs text-gray-500 text-right">
-                              Updated: {signalGeneratorConnections.timestamp ? formatAge(signalGeneratorConnections.timestamp) : 'Never'}
-                            </div>
-                          </div>
-                        )}
-
-                        {!sgConnectionsExpanded && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {microserviceHealth['signal-generator'].lastChecked ?
-                              `Last check: ${microserviceHealth['signal-generator'].lastChecked.toLocaleTimeString()}` :
-                              'Not checked'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Microservice Health Controls */}
-                  <div className="mt-4 flex space-x-2">
-                    <button
-                      onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
-                    >
-                      Refresh Health
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Recent Signals */}
-          <SignalsList
-            title="Recent Signals"
-            data={signals.slice(0, 10)}
-            onRefresh={loadSignals}
-            onViewSignal={(signal) => {
-              setSelectedJsonData(signal);
-              setShowJsonModal(true);
-            }}
-            showAll={false}
-          />
-
-          {/* Market News Panel */}
-          {/* <NewsPanel
-            socket={socket}
-            isLoading={isLoading}
-          /> */}
-
+    <div className="dashboard-wrapper">
+      {/* Top row: info panels */}
+      <div className="dashboard-top-row">
+        <div className="panel-ivskew">
+          <IVSkewPanel socket={socket} quotes={quotes} />
+        </div>
+        <div className="panel-gex">
+          <GexComparisonPanel gexData={gexData} onRefresh={fetchGexData} />
+        </div>
+        <div className="panel-es-cross">
+          <ESCrossSignalPanel socket={socket} quotes={quotes} />
+        </div>
+        <div className="panel-es-gex">
+          <ESGexLevelsPanel gexData={esGexData} onRefresh={fetchEsGexData} />
         </div>
       </div>
+      {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}
+      <div className={`dashboard-bottom-row ${tradingPanelOpen ? 'panel-open' : ''}`}>
+        <div className="panel-nq-chart">
+          <GexChart
+            quote={quotes.NQ || quotes.MNQ}
+            gexData={gexData}
+            strategyStatus={strategyStatus}
+            product="nq"
+          />
+        </div>
+        <div className="panel-es-chart">
+          <GexChart
+            quote={quotes.ES || quotes.MES}
+            gexData={esGexData}
+            strategyStatus={esStrategyStatus}
+            product="es"
+            getCandlesFn={api.getEsCandles}
+          />
+        </div>
+        {tradingPanelOpen && (
+          <TradingPanel
+            open={true}
+            onToggle={onToggleTradingPanel}
+            tradingData={tradingData}
+            isLoading={tradingDataLoading}
+          />
+        )}
+        {!tradingPanelOpen && (
+          <TradingPanel
+            open={false}
+            onToggle={onToggleTradingPanel}
+            tradingData={tradingData}
+            isLoading={tradingDataLoading}
+          />
+        )}
+      </div>
+      {/* Mobile/tablet: always-visible trading panel below charts */}
+      <div className="mobile-trading-panel">
+        <TradingPanel
+          open={true}
+          onToggle={() => {}}
+          tradingData={tradingData}
+          isLoading={tradingDataLoading}
+        />
+      </div>
     </div>
-    
-    {/* Position Sizing Modal */}
-      {showPositionSizingModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">Position Sizing Settings</h3>
-              <button
-                onClick={() => setShowPositionSizingModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Method Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Position Sizing Method
-                </label>
-                <select
-                  value={positionSizingSettings.method}
-                  onChange={(e) => setPositionSizingSettings(prev => ({
-                    ...prev,
-                    method: e.target.value
-                  }))}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                >
-                  <option value="fixed">Fixed Contracts</option>
-                  <option value="risk_based">Risk-Based Sizing</option>
-                </select>
-              </div>
-
-              {/* Fixed Quantity */}
-              {positionSizingSettings.method === 'fixed' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Fixed Quantity (contracts)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={positionSizingSettings.fixedQuantity}
-                      onChange={(e) => setPositionSizingSettings(prev => ({
-                        ...prev,
-                        fixedQuantity: parseInt(e.target.value) || 1
-                      }))}
-                      className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                    />
-                  </div>
-
-                  {/* Contract Type Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Contract Type Override
-                    </label>
-                    <select
-                      value={positionSizingSettings.contractType}
-                      onChange={(e) => setPositionSizingSettings(prev => ({
-                        ...prev,
-                        contractType: e.target.value
-                      }))}
-                      className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                    >
-                      <option value="auto">Auto (Use Signal)</option>
-                      <option value="full">Force Full Size (NQ, ES)</option>
-                      <option value="micro">Force Micro (MNQ, MES)</option>
-                    </select>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Override signal's contract type when using fixed sizing
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {/* Risk Percentage */}
-              {positionSizingSettings.method === 'risk_based' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Risk Percentage (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.1"
-                    max="100"
-                    step="0.1"
-                    value={positionSizingSettings.riskPercentage}
-                    onChange={(e) => setPositionSizingSettings(prev => ({
-                      ...prev,
-                      riskPercentage: parseFloat(e.target.value) || 10
-                    }))}
-                    className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Percentage of account balance at risk per trade
-                  </p>
-                </div>
-              )}
-
-              {/* Max Contracts */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Maximum Contracts
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={positionSizingSettings.maxContracts}
-                  onChange={(e) => setPositionSizingSettings(prev => ({
-                    ...prev,
-                    maxContracts: parseInt(e.target.value) || 10
-                  }))}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  Safety limit on position size
-                </p>
-              </div>
-
-              {/* Risk-Based Preview */}
-              {positionSizingSettings.method === 'risk_based' && (
-                <div className="bg-gray-700 p-3 rounded">
-                  <h4 className="text-sm font-medium text-gray-300 mb-2">Risk Preview (MNQ)</h4>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">$1,000 account:</span>
-                      <span className="text-white">
-                        {Math.min(
-                          Math.floor((1000 * positionSizingSettings.riskPercentage) / 100 / 104),
-                          positionSizingSettings.maxContracts
-                        )} contracts
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">$5,000 account:</span>
-                      <span className="text-white">
-                        {Math.min(
-                          Math.floor((5000 * positionSizingSettings.riskPercentage) / 100 / 104),
-                          positionSizingSettings.maxContracts
-                        )} contracts
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">$25,000 account:</span>
-                      <span className="text-white">
-                        {Math.min(
-                          Math.floor((25000 * positionSizingSettings.riskPercentage) / 100 / 104),
-                          positionSizingSettings.maxContracts
-                        )} contracts
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    Max loss per contract: $104 (52 points × $2/point)
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 mt-6">
-              <button
-                onClick={() => setShowPositionSizingModal(false)}
-                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 sm:py-2 px-4 rounded transition-colors text-base"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSavePositionSizing}
-                disabled={positionSizingLoading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white py-3 sm:py-2 px-4 rounded transition-colors text-base"
-              >
-                {positionSizingLoading ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Margin Settings Modal */}
-      {showMarginModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">💰 Day Margin Requirements</h3>
-              <button
-                onClick={() => setShowMarginModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="text-sm text-gray-300 mb-4">
-                Configure day trading margin requirements for each contract type. These values determine contract selection in intelligent sizing mode.
-              </div>
-
-              {Object.keys(marginSettings).length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(marginSettings).map(([symbol, settings]) => (
-                    <div key={symbol} className="bg-gray-700 p-4 rounded">
-                      <h4 className="font-semibold text-white mb-2">
-                        {symbol} {settings.contractType === 'micro' ? '(Micro)' : '(Full)'}
-                      </h4>
-                      <p className="text-xs text-gray-300 mb-3">{settings.description}</p>
-
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">
-                            Day Margin Requirement
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
-                            <input
-                              type="number"
-                              value={settings.dayMargin}
-                              onChange={(e) => setMarginSettings(prev => ({
-                                ...prev,
-                                [symbol]: {
-                                  ...prev[symbol],
-                                  dayMargin: parseInt(e.target.value) || 0
-                                }
-                              }))}
-                              className="w-full bg-gray-600 border border-gray-500 text-white pl-8 pr-3 py-2 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                              placeholder="Enter margin amount"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="text-xs text-gray-400 space-y-1">
-                          <div className="flex justify-between">
-                            <span>Point Value:</span>
-                            <span className="text-white">${settings.pointValue}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Max Loss (52 pts):</span>
-                            <span className="text-white">${(52 * settings.pointValue).toFixed(0)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center text-gray-400 py-8">
-                  <div className="text-4xl mb-2">⏳</div>
-                  <div>Loading margin settings...</div>
-                </div>
-              )}
-
-              <div className="bg-gray-700 p-4 rounded">
-                <h4 className="font-semibold text-white mb-2">💡 How It Works</h4>
-                <div className="text-sm text-gray-300 space-y-2">
-                  <p>• When intelligent contract selection is enabled, the system uses these margin requirements to determine if your account can afford the requested contract</p>
-                  <p>• If you request NQ but only have $1,000 in available capital, it will automatically convert to MNQ</p>
-                  <p>• Available capital = Account Balance × Margin Utilization (default 50%)</p>
-                  <p>• These values should match your broker's day trading margin requirements</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowMarginModal(false)}
-                className="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveMarginSettings}
-                disabled={marginLoading}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white py-2 px-4 rounded transition-colors"
-              >
-                {marginLoading ? 'Saving...' : 'Save Margin Settings'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* JSON Data Modal */}
-      {showJsonModal && selectedJsonData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">Webhook Raw Data</h3>
-              <button
-                onClick={() => {
-                  setShowJsonModal(false);
-                  setSelectedJsonData(null);
-                }}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-hidden">
-              <div className="bg-gray-900 rounded p-4 h-full overflow-auto">
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-300 mb-2">Event Details</h4>
-                  <div className="text-xs text-gray-400 space-y-1">
-                    <div><strong>Timestamp:</strong> {new Date(selectedJsonData.timestamp).toLocaleString()}</div>
-                    <div><strong>Type:</strong> {selectedJsonData.type}</div>
-                    <div><strong>Summary:</strong> {selectedJsonData.data}</div>
-                  </div>
-                </div>
-
-                {selectedJsonData.rawData && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">Raw Webhook Payload</h4>
-                    <pre className="text-xs text-green-300 font-mono whitespace-pre-wrap break-words">
-                      {JSON.stringify(selectedJsonData.rawData, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
-                {selectedJsonData.result && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">Processing Result</h4>
-                    <pre className="text-xs text-blue-300 font-mono whitespace-pre-wrap break-words">
-                      {JSON.stringify(selectedJsonData.result, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
-                {/* Show full log data if no specific fields available */}
-                {!selectedJsonData.rawData && !selectedJsonData.result && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">Log Data</h4>
-                    <pre className="text-xs text-yellow-300 font-mono whitespace-pre-wrap break-words">
-                      {JSON.stringify(selectedJsonData, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(selectedJsonData.rawData || selectedJsonData, null, 2));
-                  alert('JSON copied to clipboard!');
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded mr-3 transition-colors"
-              >
-                📋 Copy JSON
-              </button>
-              <button
-                onClick={() => {
-                  setShowJsonModal(false);
-                  setSelectedJsonData(null);
-                }}
-                className="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   );
 };
 

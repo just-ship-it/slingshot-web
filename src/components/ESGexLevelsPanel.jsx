@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
 
-const GexComparisonPanel = ({ gexData, onRefresh }) => {
+const ESGexLevelsPanel = ({ gexData, onRefresh }) => {
   const [copied, setCopied] = useState(null); // 'combined', 'cboe', 'tradier'
   const [refreshing, setRefreshing] = useState(false);
 
@@ -15,13 +15,13 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
     try {
       setRefreshing(true);
       await Promise.all([
-        api.refreshGexLevels().catch(() => null),
-        api.refreshTradierGexLevels().catch(() => null)
+        api.refreshEsGexLevels().catch(() => null),
+        api.refreshEsTradierGexLevels().catch(() => null)
       ]);
       // Trigger parent refresh to update shared state
       if (onRefresh) onRefresh();
     } catch (err) {
-      console.error('Error recalculating GEX levels:', err);
+      console.error('Error recalculating ES GEX levels:', err);
     } finally {
       setRefreshing(false);
     }
@@ -29,7 +29,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
 
   // Format level value
   const formatLevel = (value) => {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined) return '\u2014';
     return Number(value).toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
@@ -38,7 +38,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
 
   // Format GEX value in billions
   const formatGex = (value) => {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined) return '\u2014';
     const billions = Number(value) / 1_000_000_000;
     return billions.toFixed(2) + 'B';
   };
@@ -131,8 +131,8 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
   if (loading && !cboeData && !tradierData) {
     return (
       <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
-        <h3 className="text-xs font-bold text-white mb-2">GEX Levels</h3>
-        <div className="text-gray-300 text-[13px]">Loading GEX levels...</div>
+        <h3 className="text-xs font-bold text-white mb-2">ES GEX Levels</h3>
+        <div className="text-gray-300 text-[13px]">Loading ES GEX levels...</div>
       </div>
     );
   }
@@ -141,7 +141,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
       {/* Header */}
       <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
-        <h3 className="text-xs font-bold text-white">GEX Levels</h3>
+        <h3 className="text-xs font-bold text-white">ES GEX Levels</h3>
         <div className="flex items-center gap-2">
           <button
             onClick={onRefresh}
@@ -168,7 +168,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
       </div>
 
       {loading ? (
-        <div className="text-gray-300 text-[13px]">Loading GEX levels...</div>
+        <div className="text-gray-300 text-[13px]">Loading ES GEX levels...</div>
       ) : (
         <>
           {/* Status Row */}
@@ -278,7 +278,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
 
           {/* Source info */}
           <div className="mt-1 text-xs text-gray-400 text-center">
-            CBOE (5min) · Tradier (3min)
+            CBOE (15min delay) · Tradier (real-time)
           </div>
         </>
       )}
@@ -286,4 +286,4 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
   );
 };
 
-export default GexComparisonPanel;
+export default ESGexLevelsPanel;

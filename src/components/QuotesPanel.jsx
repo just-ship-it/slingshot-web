@@ -1,41 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
   const [expandedSymbol, setExpandedSymbol] = useState(null);
 
-  // Debug: Log when quotes prop changes
-  useEffect(() => {
-    console.log('🎯 QuotesPanel received quotes update:', {
-      BTC: quotes.BTC?.close,
-      MNQ: quotes.MNQ?.close,
-      NQ: quotes.NQ?.close,
-      QQQ: quotes.QQQ?.close,
-      MES: quotes.MES?.close,
-      ES: quotes.ES?.close,
-      SPY: quotes.SPY?.close,
-      allKeys: Object.keys(quotes),
-      quotesObjectReference: quotes,
-      timestamp: new Date().toISOString()
-    });
-  }, [quotes]);
-
-  // Additional debug: Log every render
-  console.log('🔄 QuotesPanel rendering with quotes keys:', Object.keys(quotes));
-
   // Organize symbols by market category
   const marketGroups = [
     {
-      title: "📊 Nasdaq/Tech",
+      title: "Nasdaq/Tech",
       symbols: ['MNQ', 'NQ', 'QQQ'],
       color: "text-blue-400"
     },
     {
-      title: "📈 S&P 500",
+      title: "S&P 500",
       symbols: ['MES', 'ES', 'SPY'],
       color: "text-green-400"
     },
     {
-      title: "₿ Crypto",
+      title: "Crypto",
       symbols: ['BTC'],
       color: "text-orange-400"
     }
@@ -43,8 +24,6 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
 
   // All supported symbols for compatibility
   const supportedSymbols = marketGroups.flatMap(group => group.symbols);
-
-  // Price change calculation removed - showing current prices only
 
   // Format large numbers (e.g., volume)
   const formatVolume = (volume) => {
@@ -54,11 +33,18 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
     return volume.toString();
   };
 
+  // Format change values
+  const formatChange = (value, decimals = 2) => {
+    if (value == null) return null;
+    const prefix = value > 0 ? '+' : '';
+    return `${prefix}${value.toFixed(decimals)}`;
+  };
+
   if (isLoading) {
     return (
       <div className="bg-gray-800 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">📊 Live Quotes</h3>
+          <h3 className="text-lg font-semibold text-white">Live Quotes</h3>
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
         </div>
         <div className="space-y-2">
@@ -76,7 +62,7 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
   return (
     <div className="bg-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-white">📊 Live Quotes</h3>
+        <h3 className="text-lg font-semibold text-white">Live Quotes</h3>
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-xs text-gray-400">Live</span>
@@ -84,7 +70,7 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
       </div>
 
       <div className="space-y-4">
-        {marketGroups.map((group, groupIndex) => (
+        {marketGroups.map((group) => (
           <div key={group.title} className="space-y-2">
             {/* Group Header */}
             <div className="flex items-center space-x-2 pb-2">
@@ -97,9 +83,17 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
             {/* Group Symbols */}
             <div className="space-y-2">
               {group.symbols.map(symbol => {
-                // Get quote data for this symbol - directly access by base symbol key
                 const quote = quotes[symbol];
                 const isExpanded = expandedSymbol === symbol;
+
+                // Compute change from prevClose (previous session close) to match TradingView.
+                // Recompute on every du tick using latest close; fall back to qsd ch/chp.
+                const hasPrevClose = quote?.prevClose != null && quote?.close != null;
+                const changePoints = hasPrevClose ? quote.close - quote.prevClose : (quote?.change ?? null);
+                const changePct = hasPrevClose && quote.prevClose !== 0
+                  ? ((quote.close - quote.prevClose) / quote.prevClose) * 100
+                  : (quote?.changePercent ?? null);
+                const changeColor = changePoints > 0 ? 'text-green-400' : changePoints < 0 ? 'text-red-400' : 'text-gray-400';
 
                 return (
                   <div key={symbol} className="border border-gray-700 rounded-lg overflow-hidden">
@@ -121,10 +115,9 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
                               <div className="text-white font-semibold">
                                 {quote.close?.toFixed(2) || '—'}
                               </div>
-                              {quote.previousClose && (
-                                <div className={`text-xs ${quote.close > quote.previousClose ? 'text-green-400' : quote.close < quote.previousClose ? 'text-red-400' : 'text-gray-400'}`}>
-                                  {quote.close > quote.previousClose ? '▲' : quote.close < quote.previousClose ? '▼' : ''}
-                                  {Math.abs(quote.close - quote.previousClose).toFixed(2)}
+                              {changePoints != null && (
+                                <div className={`text-xs font-mono ${changeColor}`}>
+                                  {formatChange(changePoints)} ({formatChange(changePct)}%)
                                 </div>
                               )}
                             </div>
@@ -145,19 +138,19 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
                           <div>
                             <div className="text-gray-400 mb-1">Open</div>
                             <div className="text-white font-mono">
-                              {quote.open?.toFixed(2) || '—'}
+                              {quote.sessionOpen?.toFixed(2) || quote.open?.toFixed(2) || '—'}
                             </div>
                           </div>
                           <div>
                             <div className="text-gray-400 mb-1">High</div>
                             <div className="text-white font-mono text-green-400">
-                              {quote.high?.toFixed(2) || '—'}
+                              {quote.sessionHigh?.toFixed(2) || quote.high?.toFixed(2) || '—'}
                             </div>
                           </div>
                           <div>
                             <div className="text-gray-400 mb-1">Low</div>
                             <div className="text-white font-mono text-red-400">
-                              {quote.low?.toFixed(2) || '—'}
+                              {quote.sessionLow?.toFixed(2) || quote.low?.toFixed(2) || '—'}
                             </div>
                           </div>
                           <div>
@@ -175,7 +168,7 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
                           <div>
                             <div className="text-gray-400 mb-1">Prev Close</div>
                             <div className="text-white font-mono">
-                              {quote.previousClose?.toFixed(2) || '—'}
+                              {quote.prevClose?.toFixed(2) || '—'}
                             </div>
                           </div>
                         </div>
@@ -206,10 +199,7 @@ const QuotesPanel = ({ quotes = {}, isLoading = false }) => {
 
       {Object.keys(quotes).length === 0 && (
         <div className="text-center py-8">
-          <div className="text-gray-500 mb-2">📡</div>
-          <div className="text-gray-400 text-sm">
-            Waiting for market data...
-          </div>
+          <div className="text-gray-500 mb-2">Waiting for market data...</div>
           <div className="text-gray-500 text-xs mt-1">
             Market data service connecting
           </div>

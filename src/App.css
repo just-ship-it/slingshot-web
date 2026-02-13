@@ -8,14 +8,25 @@
   text-align: center;
 }
 
-/* Smooth transitions */
+/* Smooth transitions - exclude grid containers to prevent resize animation */
 * {
   transition: all 0.2s ease-in-out;
+}
+.dashboard-wrapper,
+.dashboard-wrapper .dashboard-top-row,
+.dashboard-wrapper .dashboard-top-row *,
+.dashboard-wrapper .dashboard-bottom-row,
+.dashboard-wrapper .dashboard-bottom-row * {
+  transition: none;
+}
+.compact-header,
+.compact-header * {
+  transition: none;
 }
 
 /* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -106,6 +117,168 @@
 
 .status-cancelled {
   @apply text-red-400;
+}
+
+/* === DASHBOARD WRAPPER - vertical flex: top row + bottom row === */
+.dashboard-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 4px;
+  gap: 4px;
+}
+
+/* Top row: 4 info panels in a single-row grid */
+.dashboard-top-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1.3fr 1.3fr;
+  gap: 4px;
+  flex: 1.2;
+  min-height: 0;
+}
+.dashboard-top-row > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Bottom row: same 4-col grid as top row so panel matches a top-panel width */
+.dashboard-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1.3fr 1.3fr;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.dashboard-bottom-row > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Default (panel closed): NQ and ES each span 2 of 4 columns */
+.dashboard-bottom-row .panel-nq-chart { grid-column: span 2; }
+.dashboard-bottom-row .panel-es-chart { grid-column: span 2; }
+
+/* Panel open: 3-col grid — equal charts + panel matches top-row 1.3fr width */
+.dashboard-bottom-row.panel-open {
+  grid-template-columns: 1.8fr 1.8fr 1.3fr;
+}
+.dashboard-bottom-row.panel-open .panel-nq-chart,
+.dashboard-bottom-row.panel-open .panel-es-chart {
+  grid-column: span 1;
+}
+
+/* Trading panel — fills its grid cell when open */
+.trading-panel {
+  overflow: hidden;
+}
+
+/* Collapsed handle — absolute overlay on bottom-right edge */
+.trading-panel-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  z-index: 10;
+}
+
+/* Header responsive classes — desktop defaults */
+.header-desktop-tickers { display: flex; }
+.header-desktop-stats { display: flex; }
+.header-mobile-spacer { display: none; }
+.header-subrow { display: none; }
+.header-subrow .ticker-separator { display: none; }
+
+/* Mobile-only trading panel (always visible on tablet/phone) */
+.mobile-trading-panel { display: none; }
+
+/* Header position flash */
+@keyframes pos-flash {
+  0%, 50% { color: #fbbf24; }
+  100% { color: inherit; }
+}
+.pos-flash {
+  animation: pos-flash 1s ease-out;
+}
+
+/* Toast animations */
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toast-exit {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
+}
+
+/* Tablet: 768-1439px */
+@media (max-width: 1439px) and (min-width: 768px) {
+  /* Unlock vertical scroll on the main content area */
+  main.flex-1 { overflow-y: auto !important; }
+  .dashboard-wrapper {
+    height: auto;
+    overflow: visible;
+  }
+  .dashboard-top-row {
+    grid-template-columns: 1fr 1fr;
+    flex: none;
+  }
+  .dashboard-top-row > div { min-height: 250px; }
+  .dashboard-bottom-row {
+    grid-template-columns: 1fr 1fr;
+    flex: none;
+  }
+  .dashboard-bottom-row .panel-nq-chart,
+  .dashboard-bottom-row .panel-es-chart {
+    grid-column: span 1;
+    min-height: 400px;
+  }
+  .dashboard-bottom-row .trading-panel,
+  .dashboard-bottom-row .trading-panel-handle { display: none; }
+  /* Header: move tickers/stats to sub-row */
+  .header-desktop-tickers { display: none !important; }
+  .header-desktop-stats { display: none !important; }
+  .header-mobile-spacer { display: block; }
+  .header-subrow { display: flex; }
+  .desktop-only { display: none !important; }
+  /* Trading panel always visible below charts */
+  .mobile-trading-panel { display: block; min-height: 200px; }
+}
+
+/* Phone: <768px */
+@media (max-width: 767px) {
+  /* Unlock vertical scroll on the main content area */
+  main.flex-1 { overflow-y: auto !important; }
+  .dashboard-wrapper {
+    height: auto;
+    overflow: visible;
+  }
+  .dashboard-top-row {
+    grid-template-columns: 1fr;
+    flex: none;
+  }
+  .dashboard-top-row > div { min-height: 250px; }
+  .dashboard-bottom-row {
+    grid-template-columns: 1fr;
+    flex: none;
+  }
+  .dashboard-bottom-row .panel-nq-chart,
+  .dashboard-bottom-row .panel-es-chart {
+    grid-column: span 1;
+    min-height: 350px;
+  }
+  .dashboard-bottom-row .trading-panel,
+  .dashboard-bottom-row .trading-panel-handle { display: none; }
+  /* Header: move tickers/stats to sub-row */
+  .header-desktop-tickers { display: none !important; }
+  .header-desktop-stats { display: none !important; }
+  .header-mobile-spacer { display: block; }
+  .header-subrow { display: flex; }
+  .desktop-only { display: none !important; }
+  /* Trading panel always visible below charts */
+  .mobile-trading-panel { display: block; min-height: 180px; }
 }
 
 /* Mobile responsive adjustments */

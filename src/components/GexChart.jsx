@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import { api } from '../services/api';
 
 // Suppress ResizeObserver error (benign browser warning from lightweight-charts)
-// Must use capture phase to intercept before webpack-dev-server overlay
 if (typeof window !== 'undefined') {
   const resizeObserverHandler = (e) => {
     if (e.message?.includes?.('ResizeObserver loop') ||
@@ -15,46 +14,67 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', resizeObserverHandler, true);
 }
 
-const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
+const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
-  const zgSeriesRef = useRef(null); // Zero Gamma time series
+  const zgSeriesRef = useRef(null);
   const priceLinesRef = useRef([]);
-  const positionLinesRef = useRef([]); // Position entry/target/stop lines
-  const candleHistoryRef = useRef([]); // Candlestick history for OHLC data
-  const zgHistoryRef = useRef([]); // Zero Gamma history
-  const currentPriceRef = useRef(null); // For auto-zoom around current price
+  const positionLinesRef = useRef([]);
+  const candleHistoryRef = useRef([]);
+  const zgHistoryRef = useRef([]);
+  const currentPriceRef = useRef(null);
+  const productRef = useRef(product);
 
   const [chartReady, setChartReady] = useState(false);
 
-  // Transform gexData prop to gexLevels format
-  const gexLevels = useMemo(() => {
-    const tradier = gexData?.tradier;
-    if (!tradier || (!tradier.gammaFlip && !tradier.callWall)) return null;
-    return {
-      zeroGamma: tradier.gammaFlip,
-      callWall: tradier.callWall,
-      putWall: tradier.putWall,
-      resistance: tradier.resistance?.filter(Boolean) || [],
-      support: tradier.support?.filter(Boolean) || [],
-    };
-  }, [gexData]);
+  const isNQ = product === 'nq';
+  const isES = product === 'es';
+  const chartTitle = isES ? 'ES vs GEX Levels' : 'NQ vs GEX Levels';
+  const productLabel = isES ? 'ES' : 'NQ';
 
-  const loading = !gexData?.tradier;
+  const fetchCandles = useCallback(
+    (count) => getCandlesFn ? getCandlesFn(count) : api.getCandles(count),
+    [getCandlesFn]
+  );
+
+  const gexLevels = useMemo(() => {
+    if (isNQ) {
+      const tradier = gexData?.tradier;
+      if (!tradier || (!tradier.gammaFlip && !tradier.callWall)) return null;
+      return {
+        zeroGamma: tradier.gammaFlip, callWall: tradier.callWall, putWall: tradier.putWall,
+        resistance: tradier.resistance?.filter(Boolean) || [],
+        support: tradier.support?.filter(Boolean) || [],
+      };
+    } else {
+      const tradier = gexData?.tradier;
+      if (tradier && (tradier.gammaFlip || tradier.callWall)) {
+        return {
+          zeroGamma: tradier.gammaFlip, callWall: tradier.callWall, putWall: tradier.putWall,
+          resistance: tradier.resistance?.filter(Boolean) || [],
+          support: tradier.support?.filter(Boolean) || [],
+        };
+      }
+      const levels = gexData?.cboe?.levels;
+      if (!levels || (!levels.gamma_flip && !levels.call_wall)) return null;
+      return {
+        zeroGamma: levels.gamma_flip || levels.zero_gamma, callWall: levels.call_wall, putWall: levels.put_wall,
+        resistance: levels.resistance?.filter(Boolean) || [],
+        support: levels.support?.filter(Boolean) || [],
+      };
+    }
+  }, [gexData, isNQ]);
+
+  const loading = isNQ ? !gexData?.tradier : (!gexData?.tradier && !gexData?.cboe);
   const error = null;
 
-  // Compute strategy display values
   const strategyDisplay = useMemo(() => {
-    const currentPrice = nqQuote?.close;
+    const currentPrice = quote?.close;
     const support1 = gexLevels?.support?.[0];
     const resistance1 = gexLevels?.resistance?.[0];
-
-    // Distance to entry levels
     const distanceToS1 = currentPrice && support1 ? currentPrice - support1 : null;
     const distanceToR1 = currentPrice && resistance1 ? resistance1 - currentPrice : null;
-
-    // Strategy readiness
     const isReady = strategyStatus?.evaluation_readiness?.ready ?? false;
     const inPosition = strategyStatus?.position?.in_position ?? false;
     const inSession = strategyStatus?.strategy?.session?.in_session ?? false;
@@ -63,42 +83,28 @@ const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
     const position = strategyStatus?.position?.current;
     const blockers = strategyStatus?.evaluation_readiness?.blockers ?? [];
 
-    // Determine status badge
     let statusBadge = { text: 'LOADING', color: 'bg-gray-500' };
     if (strategyStatus) {
-      if (inPosition) {
-        statusBadge = { text: 'IN POSITION', color: 'bg-yellow-500' };
-      } else if (isReady) {
-        statusBadge = { text: 'READY', color: 'bg-green-500' };
-      } else {
-        statusBadge = { text: 'BLOCKED', color: 'bg-red-500' };
-      }
+      if (inPosition) statusBadge = { text: 'IN POSITION', color: 'bg-yellow-500' };
+      else if (isReady) statusBadge = { text: 'READY', color: 'bg-green-500' };
+      else statusBadge = { text: 'BLOCKED', color: 'bg-red-500' };
     }
 
-    return {
-      currentPrice,
-      support1,
-      resistance1,
-      distanceToS1,
-      distanceToR1,
-      isReady,
-      inPosition,
-      inSession,
-      cooldown,
-      pendingOrders,
-      position,
-      blockers,
-      statusBadge,
-    };
-  }, [nqQuote?.close, gexLevels, strategyStatus]);
+    return { currentPrice, support1, resistance1, distanceToS1, distanceToR1, isReady, inPosition, inSession, cooldown, pendingOrders, position, blockers, statusBadge };
+  }, [quote?.close, gexLevels, strategyStatus]);
 
-  // Initialize chart - always runs since container is always rendered
+  useEffect(() => { productRef.current = product; }, [product]);
+
+  // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current || chartRef.current) return;
 
+    const containerWidth = chartContainerRef.current.clientWidth || 600;
+    const containerHeight = chartContainerRef.current.clientHeight || 300;
+
     const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth || 600,
-      height,
+      width: containerWidth,
+      height: containerHeight,
       layout: {
         background: { type: 'solid', color: '#1f2937' },
         textColor: '#d1d5db',
@@ -114,85 +120,48 @@ const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
         tickMarkFormatter: (time) => {
           const date = new Date(time * 1000);
           return date.toLocaleTimeString('en-US', {
-            timeZone: 'America/New_York',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
+            timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
           });
         },
       },
       rightPriceScale: {
         borderColor: '#374151',
         autoScale: true,
-        scaleMargins: {
-          top: 0.05,
-          bottom: 0.05,
-        },
+        scaleMargins: { top: 0.05, bottom: 0.05 },
         entireTextOnly: true,
       },
-      crosshair: {
-        mode: 1, // Magnet mode
-      },
+      crosshair: { mode: 1 },
       localization: {
         priceFormatter: (price) => price.toFixed(2),
         timeFormatter: (time) => {
           const date = new Date(time * 1000);
           return date.toLocaleTimeString('en-US', {
-            timeZone: 'America/New_York',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
+            timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
           });
         },
       },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',         // Green for bullish candles
-      downColor: '#ef4444',       // Red for bearish candles
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-      priceLineVisible: true,
-      lastValueVisible: true,
-      priceFormat: {
-        type: 'price',
-        precision: 2,
-        minMove: 0.25,
-      },
-      // Auto-zoom to 100 points above and below current price
+      upColor: '#22c55e', downColor: '#ef4444',
+      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      priceLineVisible: true, lastValueVisible: true,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.25 },
       autoscaleInfoProvider: () => {
         const price = currentPriceRef.current;
-        const buffer = 100;
-
+        const buffer = productRef.current === 'es' ? 30 : 100;
         if (price) {
-          return {
-            priceRange: {
-              minValue: price - buffer,
-              maxValue: price + buffer,
-            },
-            margins: {
-              above: 0,
-              below: 0,
-            },
-          };
+          return { priceRange: { minValue: price - buffer, maxValue: price + buffer }, margins: { above: 0, below: 0 } };
         }
-
         return null;
       },
     });
 
-    // Zero Gamma line series (yellow, step line to show level changes)
     const zgSeries = chart.addSeries(LineSeries, {
-      color: '#eab308',
-      lineWidth: 2,
-      lineType: 1, // 0=Simple, 1=WithSteps, 2=Curved
-      priceLineVisible: false,
-      lastValueVisible: true,
-      title: 'ZG',
-      // Use same auto-scale as main series to prevent range expansion
-      autoscaleInfoProvider: () => null, // Don't contribute to auto-scale
+      color: '#eab308', lineWidth: 2, lineType: 1,
+      priceLineVisible: false, lastValueVisible: true, title: 'ZG',
+      autoscaleInfoProvider: () => null,
     });
 
     chartRef.current = chart;
@@ -200,331 +169,190 @@ const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
     zgSeriesRef.current = zgSeries;
     setChartReady(true);
 
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+    // ResizeObserver for dynamic sizing
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (chartRef.current) {
+          const { width, height } = entry.contentRect;
+          if (width > 0 && height > 0) {
+            chartRef.current.applyOptions({ width, height });
+          }
+        }
       }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
+    });
+    resizeObserver.observe(chartContainerRef.current);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
       zgSeriesRef.current = null;
       setChartReady(false);
     };
-  }, [height]);
+  }, []);
 
   // Update price ref for auto-zoom
   useEffect(() => {
-    const price = nqQuote?.close;
+    const price = quote?.close;
     if (!price) return;
-
-    // Only update and rescale if price moved significantly (more than 10 points)
     const prevPrice = currentPriceRef.current;
-    if (!prevPrice || Math.abs(price - prevPrice) > 10) {
+    const rescaleThreshold = isES ? 5 : 10;
+    if (!prevPrice || Math.abs(price - prevPrice) > rescaleThreshold) {
       currentPriceRef.current = price;
-
-      // Trigger rescale
       if (chartRef.current && seriesRef.current && candleHistoryRef.current.length > 0) {
         seriesRef.current.setData(candleHistoryRef.current);
         chartRef.current.timeScale().fitContent();
       }
     }
-  }, [nqQuote?.close]);
+  }, [quote?.close, isES]);
 
-  // Fetch initial candle history on mount
+  // Fetch initial candle history
   useEffect(() => {
     if (!chartReady || !seriesRef.current) return;
-
     const fetchCandleHistory = async () => {
       try {
-        const data = await api.getCandles(60);
-        if (!data?.candles || data.candles.length === 0) {
-          console.warn('No candle history available');
-          return;
-        }
-
-        // Transform backend candles to chart format
+        const data = await fetchCandles(60);
+        if (!data?.candles || data.candles.length === 0) return;
         const candles = data.candles.map(c => ({
           time: Math.floor(new Date(c.timestamp).getTime() / 1000),
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close
+          open: c.open, high: c.high, low: c.low, close: c.close
         }));
-
-        // Sort by time and deduplicate by timestamp (keep last occurrence)
         candles.sort((a, b) => a.time - b.time);
-        const uniqueCandles = candles.filter((c, i, arr) =>
-          i === arr.length - 1 || c.time !== arr[i + 1].time
-        );
-
-        // Set current price from last candle BEFORE setData so autoscale works
+        const uniqueCandles = candles.filter((c, i, arr) => i === arr.length - 1 || c.time !== arr[i + 1].time);
         const lastCandle = uniqueCandles[uniqueCandles.length - 1];
-        if (lastCandle) {
-          currentPriceRef.current = lastCandle.close;
-        }
-
-        // Initialize chart with historical data
+        if (lastCandle) currentPriceRef.current = lastCandle.close;
         candleHistoryRef.current = uniqueCandles;
         seriesRef.current.setData(uniqueCandles);
-
-        // Set time scale to show the past hour
         const now = Math.floor(Date.now() / 1000);
-        const oneHourAgo = now - 3600;
-        chartRef.current?.timeScale().setVisibleRange({
-          from: oneHourAgo,
-          to: now,
-        });
-
-        console.log(`Loaded ${uniqueCandles.length} historical candles (${candles.length - uniqueCandles.length} duplicates removed)`);
+        chartRef.current?.timeScale().setVisibleRange({ from: now - 3600, to: now });
       } catch (error) {
-        console.warn('Failed to load candle history:', error);
+        console.warn(`Failed to load ${productLabel} candle history:`, error);
       }
     };
-
     fetchCandleHistory();
-  }, [chartReady]);
+  }, [chartReady, fetchCandles, productLabel]);
 
-  // Update candlestick data with real-time OHLC updates
+  // Update candlestick data with real-time OHLC
   useEffect(() => {
-    if (!seriesRef.current || !nqQuote?.close || !chartReady) return;
-
-    // Get timestamp and round to minute boundary for 1-minute candles
-    const timestamp = nqQuote.timestamp
-      ? new Date(nqQuote.timestamp).getTime() / 1000
-      : Math.floor(Date.now() / 1000);
+    if (!seriesRef.current || !quote?.close || !chartReady) return;
+    const timestamp = quote.timestamp ? new Date(quote.timestamp).getTime() / 1000 : Math.floor(Date.now() / 1000);
     const candleTime = Math.floor(timestamp / 60) * 60;
-
-    // Build candle from quote data
+    const hasCandelOHLCV = !!quote.candleTimestamp;
     const candle = {
       time: candleTime,
-      open: nqQuote.open || nqQuote.close,
-      high: nqQuote.high || nqQuote.close,
-      low: nqQuote.low || nqQuote.close,
-      close: nqQuote.close
+      open: hasCandelOHLCV ? quote.open : quote.close,
+      high: hasCandelOHLCV ? quote.high : quote.close,
+      low: hasCandelOHLCV ? quote.low : quote.close,
+      close: quote.close
     };
-
     const history = candleHistoryRef.current;
     const lastCandle = history[history.length - 1];
-
     if (lastCandle && lastCandle.time === candleTime) {
-      // Update current candle - high/low may have expanded
-      lastCandle.high = Math.max(lastCandle.high, candle.high);
-      lastCandle.low = Math.min(lastCandle.low, candle.low);
+      if (hasCandelOHLCV) { lastCandle.open = candle.open; lastCandle.high = candle.high; lastCandle.low = candle.low; }
+      else { lastCandle.high = Math.max(lastCandle.high, candle.close); lastCandle.low = Math.min(lastCandle.low, candle.close); }
       lastCandle.close = candle.close;
       seriesRef.current.update(lastCandle);
     } else if (!lastCandle || candleTime > lastCandle.time) {
-      // New candle started (only if time is advancing)
       history.push(candle);
-      // Keep last 60 candles (1 hour of 1-min data)
-      if (history.length > 60) {
-        history.shift();
-      }
+      if (history.length > 60) history.shift();
       seriesRef.current.setData(history);
     } else {
-      // Candle with older timestamp - check if it already exists and update
       const existingIndex = history.findIndex(c => c.time === candleTime);
       if (existingIndex >= 0) {
-        // Update existing candle instead of adding duplicate
-        history[existingIndex] = candle;
+        if (hasCandelOHLCV) { history[existingIndex] = candle; }
+        else { history[existingIndex].high = Math.max(history[existingIndex].high, candle.close); history[existingIndex].low = Math.min(history[existingIndex].low, candle.close); history[existingIndex].close = candle.close; }
         seriesRef.current.setData(history);
       }
-      // If not found and older than oldest, ignore it
     }
-
-    // Extend ZG line to current time (step line stays flat until value changes)
+    // Extend ZG line
     const now = Math.floor(Date.now() / 1000);
     if (zgSeriesRef.current && zgHistoryRef.current.length > 0) {
       const zgHistory = zgHistoryRef.current;
       const firstZg = zgHistory[0];
       const lastZg = zgHistory[zgHistory.length - 1];
       if (now > lastZg.time) {
-        // Build clean data array with extension points
         const chartData = zgHistory.map(p => ({ time: p.time, value: p.value }));
-
-        // Extend left to one hour ago
         const oneHourAgo = now - 3600;
-        if (firstZg.time > oneHourAgo) {
-          chartData.unshift({ time: oneHourAgo, value: firstZg.value });
-        }
-
-        // Extend right to current time
+        if (firstZg.time > oneHourAgo) chartData.unshift({ time: oneHourAgo, value: firstZg.value });
         chartData.push({ time: now, value: lastZg.value });
-
-        // Sort and deduplicate to ensure ascending order (safety measure)
         chartData.sort((a, b) => a.time - b.time);
-        const uniqueChartData = chartData.filter((p, i, arr) =>
-          i === arr.length - 1 || p.time !== arr[i + 1].time
-        );
-
+        const uniqueChartData = chartData.filter((p, i, arr) => i === arr.length - 1 || p.time !== arr[i + 1].time);
         zgSeriesRef.current.setData(uniqueChartData);
       }
     }
-  }, [nqQuote, chartReady]);
+  }, [quote, chartReady]);
 
   // GEX level lines
   useEffect(() => {
     if (!seriesRef.current || !gexLevels || !chartReady) return;
-
-    // Remove existing price lines
-    priceLinesRef.current.forEach(line => {
-      try {
-        seriesRef.current.removePriceLine(line);
-      } catch (e) {
-        // Line may already be removed
-      }
-    });
+    priceLinesRef.current.forEach(line => { try { seriesRef.current.removePriceLine(line); } catch (e) {} });
     priceLinesRef.current = [];
-
     const createLine = (price, title, color, lineStyle = 0) => {
       if (!price || price === 0) return;
       try {
-        const line = seriesRef.current.createPriceLine({
-          price,
-          color,
-          lineWidth: 2,
-          lineStyle, // 0 = solid, 2 = dashed
-          axisLabelVisible: true,
-          title,
-        });
+        const line = seriesRef.current.createPriceLine({ price, color, lineWidth: 2, lineStyle, axisLabelVisible: true, title });
         priceLinesRef.current.push(line);
-      } catch (e) {
-        // Silently ignore price line errors
-      }
+      } catch (e) {}
     };
+    createLine(gexLevels.callWall, 'CW', '#ef4444', 0);
+    createLine(gexLevels.putWall, 'PW', '#22c55e', 0);
+    gexLevels.resistance?.forEach((level, i) => createLine(level, `R${i + 1}`, '#f97316', 2));
+    gexLevels.support?.forEach((level, i) => createLine(level, `S${i + 1}`, '#06b6d4', 2));
 
-    // Main levels (solid lines) - Zero Gamma is now a time series
-    createLine(gexLevels.callWall, 'CW', '#ef4444', 0);   // Red (resistance)
-    createLine(gexLevels.putWall, 'PW', '#22c55e', 0);    // Green (support)
-
-    // Resistance levels (dashed orange)
-    gexLevels.resistance?.forEach((level, i) => {
-      createLine(level, `R${i + 1}`, '#f97316', 2);
-    });
-
-    // Support levels (dashed cyan)
-    gexLevels.support?.forEach((level, i) => {
-      createLine(level, `S${i + 1}`, '#06b6d4', 2);
-    });
-
-    // Update Zero Gamma time series (step line)
-    // Needs 2+ points to draw a line, so we always extend to "now"
+    // Update Zero Gamma time series
     if (zgSeriesRef.current && gexLevels.zeroGamma) {
       const now = Math.floor(Date.now() / 1000);
       const history = zgHistoryRef.current;
-
-      // Keep last hour of real data points
       const filtered = history.filter(p => now - p.time < 3600);
-
-      // Check if we need to add or update a point
       const lastPoint = filtered[filtered.length - 1];
-      if (!lastPoint) {
-        // No points yet - add first point
-        filtered.push({ time: now, value: gexLevels.zeroGamma });
-      } else if (lastPoint.time === now) {
-        // Same timestamp - update value in place (prevents duplicates)
-        lastPoint.value = gexLevels.zeroGamma;
-      } else if (lastPoint.value !== gexLevels.zeroGamma) {
-        // Value changed and time advanced - add new point
-        filtered.push({ time: now, value: gexLevels.zeroGamma });
-      }
-
+      if (!lastPoint) filtered.push({ time: now, value: gexLevels.zeroGamma });
+      else if (lastPoint.time === now) lastPoint.value = gexLevels.zeroGamma;
+      else if (lastPoint.value !== gexLevels.zeroGamma) filtered.push({ time: now, value: gexLevels.zeroGamma });
       zgHistoryRef.current = filtered;
-
-      // Build clean data array for chart
       const chartData = filtered.map(p => ({ time: p.time, value: p.value }));
       if (chartData.length > 0) {
         const first = chartData[0];
         const last = chartData[chartData.length - 1];
-
-        // Extend left to one hour ago so line fills the chart
         const oneHourAgo = now - 3600;
-        if (first.time > oneHourAgo) {
-          chartData.unshift({ time: oneHourAgo, value: first.value });
-        }
-
-        // Extend right to current time
-        if (now > last.time) {
-          chartData.push({ time: now, value: last.value });
-        }
+        if (first.time > oneHourAgo) chartData.unshift({ time: oneHourAgo, value: first.value });
+        if (now > last.time) chartData.push({ time: now, value: last.value });
       }
-
-      // Sort and deduplicate to ensure ascending order (safety measure)
       chartData.sort((a, b) => a.time - b.time);
-      const uniqueChartData = chartData.filter((p, i, arr) =>
-        i === arr.length - 1 || p.time !== arr[i + 1].time
-      );
-
+      const uniqueChartData = chartData.filter((p, i, arr) => i === arr.length - 1 || p.time !== arr[i + 1].time);
       zgSeriesRef.current.setData(uniqueChartData);
     }
-
   }, [gexLevels, chartReady]);
 
-  // Position lines (entry, target, stop) when in position
+  // Position lines
   useEffect(() => {
     if (!seriesRef.current || !chartReady) return;
-
-    // Remove existing position lines
-    positionLinesRef.current.forEach(line => {
-      try {
-        seriesRef.current.removePriceLine(line);
-      } catch (e) {
-        // Line may already be removed
-      }
-    });
+    positionLinesRef.current.forEach(line => { try { seriesRef.current.removePriceLine(line); } catch (e) {} });
     positionLinesRef.current = [];
-
-    // Add position lines if in position
     const position = strategyStatus?.position?.current;
     if (position && strategyStatus?.position?.in_position) {
       const createPositionLine = (price, title, color, lineStyle = 0, lineWidth = 2) => {
         if (!price || price === 0) return;
         try {
-          const line = seriesRef.current.createPriceLine({
-            price,
-            color,
-            lineWidth,
-            lineStyle,
-            axisLabelVisible: true,
-            title,
-          });
+          const line = seriesRef.current.createPriceLine({ price, color, lineWidth, lineStyle, axisLabelVisible: true, title });
           positionLinesRef.current.push(line);
-        } catch (e) {
-          // Silently ignore
-        }
+        } catch (e) {}
       };
-
-      // Entry price (white solid)
       createPositionLine(position.entry_price, 'ENTRY', '#ffffff', 0, 2);
-
-      // Get target and stop from the strategy params (7pt target, 3pt stop for scalp)
       const isLong = position.side === 'long';
-      const targetPrice = isLong ? position.entry_price + 7 : position.entry_price - 7;
-      const stopPrice = isLong ? position.entry_price - 3 : position.entry_price + 3;
-
-      // Target (green dashed)
-      createPositionLine(targetPrice, 'TGT', '#22c55e', 2, 1);
-      // Stop (red dashed)
-      createPositionLine(stopPrice, 'STOP', '#ef4444', 2, 1);
+      createPositionLine(isLong ? position.entry_price + 7 : position.entry_price - 7, 'TGT', '#22c55e', 2, 1);
+      createPositionLine(isLong ? position.entry_price - 3 : position.entry_price + 3, 'STOP', '#ef4444', 2, 1);
     }
   }, [strategyStatus?.position, chartReady]);
 
-  // Determine status message
   const getStatusMessage = () => {
     if (loading && !gexLevels) return 'Loading GEX levels...';
     if (error && !gexLevels) return error;
-    if (!nqQuote?.close) return 'Waiting for NQ price data...';
+    if (!quote?.close) return `Waiting for ${productLabel} price data...`;
     return null;
   };
-
   const statusMessage = getStatusMessage();
 
-  // Helper to format distance with color
   const getDistanceColor = (distance) => {
     if (distance === null) return 'text-gray-400';
     const absDistance = Math.abs(distance);
@@ -534,84 +362,84 @@ const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
-      {/* Header with title, legend, and status badge */}
-      <div className="flex justify-between items-center mb-3">
-        <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold text-white">NQ vs GEX Levels</h3>
-          {/* Strategy Status Badge */}
-          <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${strategyDisplay.statusBadge.color}`}>
-            {strategyDisplay.statusBadge.text}
-          </span>
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg">
+      {/* Header */}
+      <div className="flex justify-between items-center px-2 py-1 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-bold text-white">{chartTitle}</h3>
+          {strategyStatus && (
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${strategyDisplay.statusBadge.color}`}>
+              {strategyDisplay.statusBadge.text}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-4 text-xs text-gray-400">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-500"></span>
-            CW
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-            ZG
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500"></span>
-            PW
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-            S1
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-            R1
-          </span>
+        <div className="flex items-center gap-3 text-[9px] text-gray-400">
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>CW</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>ZG</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>PW</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>S1</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>R1</span>
         </div>
       </div>
 
-      {/* Chart container with distance overlay */}
-      <div className="relative w-full">
-        <div ref={chartContainerRef} style={{ height: `${height}px`, width: '100%' }} />
+      {/* Chart container - fills remaining space */}
+      <div className="relative flex-1 min-h-0">
+        <div ref={chartContainerRef} className="absolute inset-0" />
 
-        {/* Distance to entry levels overlay (top-left) */}
-        {!statusMessage && strategyDisplay.currentPrice && (
-          <div className="absolute top-2 left-2 bg-gray-900 bg-opacity-80 rounded px-3 py-2 text-xs">
+        {/* Distance overlay (top-left) - NQ only */}
+        {isNQ && !statusMessage && strategyDisplay.currentPrice && (
+          <div className="absolute top-2 left-2 bg-gray-900 bg-opacity-80 rounded px-2 py-1.5 text-[10px] z-10">
             <div className="font-semibold text-gray-300 mb-1">Distance to Entry</div>
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between gap-4">
-                <span className="text-cyan-400">S1 (Long):</span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex justify-between gap-3">
+                <span className="text-cyan-400">S1:</span>
                 <span className={getDistanceColor(strategyDisplay.distanceToS1)}>
-                  {strategyDisplay.distanceToS1 !== null
-                    ? `${strategyDisplay.distanceToS1 > 0 ? '+' : ''}${strategyDisplay.distanceToS1.toFixed(1)} pts`
-                    : '--'}
+                  {strategyDisplay.distanceToS1 !== null ? `${strategyDisplay.distanceToS1 > 0 ? '+' : ''}${strategyDisplay.distanceToS1.toFixed(1)}` : '--'}
                 </span>
               </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-orange-400">R1 (Short):</span>
+              <div className="flex justify-between gap-3">
+                <span className="text-orange-400">R1:</span>
                 <span className={getDistanceColor(strategyDisplay.distanceToR1)}>
-                  {strategyDisplay.distanceToR1 !== null
-                    ? `${strategyDisplay.distanceToR1 > 0 ? '+' : ''}${strategyDisplay.distanceToR1.toFixed(1)} pts`
-                    : '--'}
+                  {strategyDisplay.distanceToR1 !== null ? `${strategyDisplay.distanceToR1 > 0 ? '+' : ''}${strategyDisplay.distanceToR1.toFixed(1)}` : '--'}
                 </span>
               </div>
             </div>
-            {/* Entry zone indicator */}
             {(strategyDisplay.distanceToS1 !== null && Math.abs(strategyDisplay.distanceToS1) <= 3) && (
-              <div className="mt-1 text-green-400 font-bold text-center animate-pulse">
-                ⚡ LONG ENTRY ZONE
-              </div>
+              <div className="mt-0.5 text-green-400 font-bold text-center animate-pulse text-[9px]">LONG ENTRY</div>
             )}
             {(strategyDisplay.distanceToR1 !== null && Math.abs(strategyDisplay.distanceToR1) <= 3) && (
-              <div className="mt-1 text-green-400 font-bold text-center animate-pulse">
-                ⚡ SHORT ENTRY ZONE
+              <div className="mt-0.5 text-green-400 font-bold text-center animate-pulse text-[9px]">SHORT ENTRY</div>
+            )}
+          </div>
+        )}
+
+        {/* ES strategy overlay */}
+        {isES && !statusMessage && strategyStatus && (
+          <div className="absolute top-2 left-2 bg-gray-900 bg-opacity-80 rounded px-2 py-1.5 text-[10px] z-10">
+            <div className="font-semibold text-gray-300 mb-1">ES Cross-Signal</div>
+            {strategyStatus?.composite_score != null && (
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-400">Score:</span>
+                <span className={strategyStatus.composite_score > 0 ? 'text-green-400' : strategyStatus.composite_score < 0 ? 'text-red-400' : 'text-gray-300'}>
+                  {strategyStatus.composite_score > 0 ? '+' : ''}{strategyStatus.composite_score?.toFixed?.(1) || strategyStatus.composite_score}
+                </span>
+              </div>
+            )}
+            {strategyStatus?.signal && (
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-400">Signal:</span>
+                <span className={strategyStatus.signal === 'buy' ? 'text-green-400' : strategyStatus.signal === 'sell' ? 'text-red-400' : 'text-gray-300'}>
+                  {strategyStatus.signal.toUpperCase()}
+                </span>
               </div>
             )}
           </div>
         )}
 
-        {/* Position info overlay (top-right) */}
+        {/* Position overlay (top-right) */}
         {strategyDisplay.inPosition && strategyDisplay.position && (
-          <div className="absolute top-2 right-2 bg-gray-900 bg-opacity-80 rounded px-3 py-2 text-xs">
-            <div className={`font-bold mb-1 ${strategyDisplay.position.side === 'long' ? 'text-green-400' : 'text-red-400'}`}>
+          <div className="absolute top-2 right-2 bg-gray-900 bg-opacity-80 rounded px-2 py-1.5 text-[10px] z-10">
+            <div className={`font-bold mb-0.5 ${strategyDisplay.position.side === 'long' ? 'text-green-400' : 'text-red-400'}`}>
               {strategyDisplay.position.side?.toUpperCase()} @ {strategyDisplay.position.entry_price?.toFixed(2)}
             </div>
             {strategyDisplay.currentPrice && (
@@ -632,64 +460,55 @@ const GexChart = ({ nqQuote, height = 300, gexData, strategyStatus }) => {
 
         {/* Overlay message when waiting for data */}
         {statusMessage && (
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-90"
-            style={{ height: `${height}px` }}
-          >
-            <span className={error ? 'text-red-400' : 'text-gray-400'}>
-              {statusMessage}
-            </span>
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-90 z-10">
+            <span className={error ? 'text-red-400' : 'text-gray-400'}>{statusMessage}</span>
           </div>
         )}
       </div>
 
       {/* Footer status bar */}
-      <div className="mt-3 pt-3 border-t border-gray-700">
-        <div className="flex flex-wrap justify-between items-center gap-4 text-xs">
-          {/* Session status */}
-          <div className="flex items-center gap-2">
+      <div className="px-2 py-1 border-t border-gray-700 flex-shrink-0">
+        <div className="flex flex-wrap justify-between items-center gap-2 text-[10px]">
+          <div className="flex items-center gap-1.5">
             <span className="text-gray-400">Session:</span>
             <span className={strategyDisplay.inSession ? 'text-green-400' : 'text-gray-500'}>
-              {strategyDisplay.inSession ? 'RTH ✓' : 'Outside RTH'}
+              {strategyDisplay.inSession ? 'RTH' : 'Outside'}
             </span>
           </div>
-
-          {/* Cooldown status */}
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Cooldown:</span>
-            <span className={strategyDisplay.cooldown.in_cooldown ? 'text-yellow-400' : 'text-green-400'}>
-              {strategyDisplay.cooldown.in_cooldown
-                ? `${strategyDisplay.cooldown.seconds_remaining}s`
-                : 'Ready'}
-            </span>
-          </div>
-
-          {/* Position status */}
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Position:</span>
-            <span className={strategyDisplay.inPosition ? 'text-yellow-400' : 'text-gray-300'}>
-              {strategyDisplay.inPosition
-                ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(0)}`
-                : 'Flat'}
-            </span>
-          </div>
-
-          {/* Pending orders */}
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Pending:</span>
-            <span className={strategyDisplay.pendingOrders.count > 0 ? 'text-yellow-400' : 'text-gray-300'}>
-              {strategyDisplay.pendingOrders.count > 0
-                ? `${strategyDisplay.pendingOrders.count} (${strategyDisplay.pendingOrders.orders[0]?.candleCount || 0}/${strategyDisplay.pendingOrders.timeout_candles || 3} candles)`
-                : '0'}
-            </span>
-          </div>
-
-          {/* Blockers (if any) */}
-          {strategyDisplay.blockers.length > 0 && !strategyDisplay.inPosition && (
-            <div className="flex items-center gap-2">
-              <span className="text-red-400">⚠</span>
-              <span className="text-red-400 text-xs">
-                {strategyDisplay.blockers[0]}
+          {isNQ && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">CD:</span>
+                <span className={strategyDisplay.cooldown.in_cooldown ? 'text-yellow-400' : 'text-green-400'}>
+                  {strategyDisplay.cooldown.in_cooldown ? `${strategyDisplay.cooldown.seconds_remaining}s` : 'Ready'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">Pos:</span>
+                <span className={strategyDisplay.inPosition ? 'text-yellow-400' : 'text-gray-300'}>
+                  {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(0)}` : 'Flat'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">Pend:</span>
+                <span className={strategyDisplay.pendingOrders.count > 0 ? 'text-yellow-400' : 'text-gray-300'}>
+                  {strategyDisplay.pendingOrders.count > 0
+                    ? `${strategyDisplay.pendingOrders.count} (${strategyDisplay.pendingOrders.orders[0]?.candleCount || 0}/${strategyDisplay.pendingOrders.timeout_candles || 3})`
+                    : '0'}
+                </span>
+              </div>
+              {strategyDisplay.blockers.length > 0 && !strategyDisplay.inPosition && (
+                <div className="flex items-center gap-1">
+                  <span className="text-red-400 text-[9px]">{strategyDisplay.blockers[0]}</span>
+                </div>
+              )}
+            </>
+          )}
+          {isES && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-400">Pos:</span>
+              <span className={strategyDisplay.inPosition ? 'text-yellow-400' : 'text-gray-300'}>
+                {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(0)}` : 'Flat'}
               </span>
             </div>
           )}

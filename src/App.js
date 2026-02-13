@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
-import TestTrading from './components/TestTrading';
+import PlatformStatus from './components/PlatformStatus';
+import MacroBriefing from './components/MacroBriefing';
+import CompactHeader from './components/CompactHeader';
+import ToastContainer, { formatToastMessage } from './components/ToastContainer';
 import Login from './components/Login';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useTradingData } from './hooks/useTradingData';
 import { api } from './services/api';
 import { authUtils } from './utils/auth';
 import './App.css';
@@ -15,85 +19,85 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' or 'test-trading'
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showMacroModal, setShowMacroModal] = useState(false);
+
+  // Lifted state for header
+  const [quotes, setQuotes] = useState({});
+  const [accountSummary, setAccountSummary] = useState(null);
+
+  // Trading panel + toast state
+  const [tradingPanelOpen, setTradingPanelOpen] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const [posFlashKey, setPosFlashKey] = useState(0);
+
+  // Tradovate status (shared between Dashboard and PlatformStatus)
+  const [tradovateStatus, setTradovateStatus] = useState('disabled');
+
+  const checkTradovateConnection = useCallback(async () => {
+    try {
+      setTradovateStatus('checking');
+      const healthResponse = await api.getTradingHealth();
+      if (healthResponse.authenticated) {
+        setTradovateStatus('connected');
+      } else {
+        setTradovateStatus(healthResponse.authenticationStatus === 'failed' ? 'auth_failed' : 'disconnected');
+      }
+    } catch (error) {
+      console.error('Tradovate connection check failed:', error);
+      setTradovateStatus('error');
+    }
+  }, []);
 
   // Check authentication status on app start
   useEffect(() => {
     const checkAuth = async () => {
       const authenticated = authUtils.isAuthenticated();
-      console.log('🔐 Auth check:', authenticated ? 'authenticated' : 'not authenticated');
-
       if (authenticated) {
-        // Validate the stored token
         const isValid = await authUtils.validateToken();
         if (isValid) {
           setIsAuthenticated(true);
         } else {
-          console.log('🚫 Stored token is invalid, clearing');
           authUtils.clearToken();
           setIsAuthenticated(false);
         }
       } else {
         setIsAuthenticated(false);
       }
-
       setIsCheckingAuth(false);
     };
-
     checkAuth();
   }, []);
 
   // Handle successful login
   const handleLogin = async (token) => {
-    console.log('✅ Login successful');
     setIsAuthenticated(true);
-    // The token is already stored by the Login component
   };
 
   // Handle logout
   const handleLogout = () => {
-    console.log('🚪 Logging out');
     authUtils.logout();
     setIsAuthenticated(false);
     setAccounts([]);
     setSelectedAccount(null);
-    // Clear saved account selection
     localStorage.removeItem('slingshot_selected_account');
-    console.log('🗑️ Cleared saved account selection from localStorage');
   };
 
-  // Memoized WebSocket callbacks to prevent connection loops
+  // Memoized WebSocket callbacks
   const handleConnect = useCallback(() => {
-    console.log('✅ Connected to Slingshot backend');
     setConnectionStatus('connected');
   }, []);
 
   const handleDisconnect = useCallback(() => {
-    console.log('❌ Disconnected from backend');
     setConnectionStatus('disconnected');
   }, []);
 
-  const handleWebhookReceived = useCallback((data) => {
-    console.log('📨 Webhook received:', data);
-    // Don't auto-refresh accounts on webhook - just log it
-  }, []);
+  const handleWebhookReceived = useCallback(() => {}, []);
+  const handleOrderPlaced = useCallback(() => {}, []);
+  const handleMarketData = useCallback(() => {}, []);
+  const handleInitialState = useCallback(() => {}, []);
 
-  const handleOrderPlaced = useCallback((data) => {
-    console.log('📋 Order placed:', data);
-    // Don't auto-refresh accounts on order - just log it
-  }, []);
-
-  const handleMarketData = useCallback((data) => {
-    console.log('📊 Market data:', data);
-  }, []);
-
-  const handleInitialState = useCallback((data) => {
-    console.log('🔄 Initial state received in App:', data);
-    // Pass initial state data to dashboard via callback
-    // This will be handled by the Dashboard component
-  }, []);
-
-  // WebSocket connection for real-time updates (only when authenticated)
+  // WebSocket connection
   const socket = useWebSocket(
     isAuthenticated ? (process.env.REACT_APP_API_URL || 'http://localhost:3014') : null,
     {
@@ -106,82 +110,73 @@ function App() {
     }
   );
 
+  // Trading data hook (positions + orders with real-time updates)
+  const handleTradingChangeEvent = useCallback((event) => {
+    // Flash the header indicator
+    setPosFlashKey(k => k + 1);
+    // Add a toast
+    const message = formatToastMessage(event);
+    if (message) {
+      setToasts(prev => [...prev, { id: Date.now() + Math.random(), type: event.type, message, duration: 4000 }]);
+    }
+  }, []);
+
+  const { tradingData, isLoading: tradingDataLoading } = useTradingData(socket, handleTradingChangeEvent);
+
+  const openPositionCount = tradingData?.stats?.totalPositions || 0;
+  const pendingOrderCount = tradingData?.stats?.totalWorkingOrders || 0;
+
+  const dismissToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
   // Load initial data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       setIsLoading(false);
+      checkTradovateConnection().catch(console.error);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, checkTradovateConnection]);
 
   const loadAccountData = async (showGlobalLoading = false) => {
     try {
-      if (showGlobalLoading) {
-        setIsLoading(true);
-      }
+      if (showGlobalLoading) setIsLoading(true);
       setError(null);
 
-      // Try to load accounts, but don't block the entire app if it fails
       const accountsResponse = await api.getAccounts();
-      const accounts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
-      setAccounts(accounts);
+      const accts = Array.isArray(accountsResponse) ? accountsResponse : accountsResponse.accounts || [];
+      setAccounts(accts);
 
-      // Select account with localStorage persistence
-      if (accounts.length > 0) {
-        // First, try to load previously selected account from localStorage
+      if (accts.length > 0) {
         const savedAccountId = localStorage.getItem('slingshot_selected_account');
         let targetAccount = null;
 
         if (savedAccountId) {
-          targetAccount = accounts.find(account =>
-            String(account.id) === String(savedAccountId)
-          );
-          console.log('💾 Found saved account in localStorage:', savedAccountId, 'Found:', !!targetAccount);
+          targetAccount = accts.find(account => String(account.id) === String(savedAccountId));
         }
-
-        // If no saved account or saved account not found, use default fallback logic
         if (!targetAccount) {
-          // Try to find a default account
-          targetAccount = accounts.find(account =>
-            account.id === '33316485' || account.id === 33316485 ||
-            String(account.id) === '33316485'
+          targetAccount = accts.find(account =>
+            account.id === '33316485' || account.id === 33316485 || String(account.id) === '33316485'
           );
-          console.log('🔍 Looking for default account in:', accounts.map(a => ({id: a.id, type: typeof a.id, name: a.name})));
-          console.log('🎯 Found default account:', targetAccount);
-
-          if (!targetAccount) {
-            // Final fallback to first account
-            targetAccount = accounts[0];
-            console.log('⚠️ Using first account as final fallback:', targetAccount.id, targetAccount.name);
-          }
+          if (!targetAccount) targetAccount = accts[0];
         }
-
         if (targetAccount) {
           setSelectedAccount(targetAccount);
-          // Save to localStorage for persistence
           localStorage.setItem('slingshot_selected_account', String(targetAccount.id));
-          console.log('✅ Selected account:', targetAccount.id, targetAccount.name);
         }
       }
-
     } catch (err) {
       console.error('Failed to load account data:', err);
-      // Don't set error - let Dashboard handle Tradovate connection status
-      // The app should still be usable for other features (webhooks, etc.)
     } finally {
-      if (showGlobalLoading) {
-        setIsLoading(false);
-      }
+      if (showGlobalLoading) setIsLoading(false);
     }
   };
 
   const handleAccountChange = (account) => {
     setSelectedAccount(account);
-    // Save to localStorage for persistence
     if (account) {
       localStorage.setItem('slingshot_selected_account', String(account.id));
-      console.log('💾 Saved account selection to localStorage:', account.id, account.name);
     }
-    // Subscribe to account-specific updates
     if (socket && account) {
       socket.emit('subscribe_account', account.id);
     }
@@ -199,12 +194,10 @@ function App() {
     );
   }
 
-  // Show login screen if not authenticated
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Show loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -216,18 +209,14 @@ function App() {
     );
   }
 
-  // Show error screen
   if (error) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-6">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <div className="text-red-500 text-6xl mb-4">!</div>
           <h2 className="text-xl font-bold text-white mb-2">Connection Error</h2>
           <p className="text-gray-300 mb-4">{error}</p>
-          <button
-            onClick={loadAccountData}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
+          <button onClick={loadAccountData} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
             Retry Connection
           </button>
         </div>
@@ -235,134 +224,102 @@ function App() {
     );
   }
 
-  // Main authenticated app
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col">
-      {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 p-4 flex-shrink-0">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-2xl font-bold text-blue-400">
-              Slingshot
-            </h1>
+    <div className="h-screen bg-gray-900 text-white flex flex-col overflow-hidden">
+      <CompactHeader
+        quotes={quotes}
+        accountSummary={accountSummary}
+        openPositionCount={openPositionCount}
+        pendingOrderCount={pendingOrderCount}
+        posFlashKey={posFlashKey}
+        tradingPanelOpen={tradingPanelOpen}
+        onToggleTradingPanel={() => setTradingPanelOpen(prev => !prev)}
+        accounts={accounts}
+        selectedAccount={selectedAccount}
+        onAccountChange={handleAccountChange}
+        connectionStatus={connectionStatus}
+        onStatusClick={() => setShowStatusModal(true)}
+        onMacroClick={() => setShowMacroModal(true)}
+        onLogout={handleLogout}
+      />
 
-            {/* Navigation Tabs */}
-            <nav className="flex space-x-2 ml-8">
+      <main className="flex-1 overflow-hidden">
+        <Dashboard
+          account={selectedAccount}
+          socket={socket}
+          onRefresh={loadAccountData}
+          tradovateStatus={tradovateStatus}
+          onTradovateCheck={checkTradovateConnection}
+          onQuotesChange={setQuotes}
+          onAccountSummaryChange={setAccountSummary}
+          tradingPanelOpen={tradingPanelOpen}
+          onToggleTradingPanel={() => setTradingPanelOpen(prev => !prev)}
+          tradingData={tradingData}
+          tradingDataLoading={tradingDataLoading}
+          onAccountsLoaded={(loadedAccounts) => {
+            setAccounts(loadedAccounts);
+            if (loadedAccounts.length > 0 && !selectedAccount) {
+              const savedAccountId = localStorage.getItem('slingshot_selected_account');
+              let targetAccount = null;
+              if (savedAccountId) {
+                targetAccount = loadedAccounts.find(account => String(account.id) === String(savedAccountId));
+              }
+              if (!targetAccount) {
+                targetAccount = loadedAccounts.find(account =>
+                  account.id === '33316485' || account.id === 33316485 || String(account.id) === '33316485'
+                );
+                if (!targetAccount) targetAccount = loadedAccounts[0];
+              }
+              if (targetAccount) {
+                setSelectedAccount(targetAccount);
+                localStorage.setItem('slingshot_selected_account', String(targetAccount.id));
+              }
+            }
+          }}
+        />
+      </main>
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Platform Status Modal */}
+      {showStatusModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-12 px-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-white">Platform Status</h2>
               <button
-                onClick={() => setCurrentView('dashboard')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  currentView === 'dashboard'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
-                }`}
+                onClick={() => setShowStatusModal(false)}
+                className="text-gray-400 hover:text-white transition-colors text-xl leading-none px-1"
               >
-                Dashboard
+                ✕
               </button>
-              <button
-                onClick={() => setCurrentView('test-trading')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  currentView === 'test-trading'
-                    ? 'bg-red-600 text-white'
-                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                Test Trading
-              </button>
-            </nav>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            {/* Account Selector */}
-            {accounts.length > 0 && (
-              <select
-                value={selectedAccount?.id || ''}
-                onChange={(e) => {
-                  const account = accounts.find(acc => acc.id.toString() === e.target.value);
-                  handleAccountChange(account);
-                }}
-                className="bg-gray-700 border border-gray-600 text-white px-3 py-1 rounded"
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name} ({account.id})
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Connection Status */}
-            <div className="flex items-center space-x-2">
-              <div
-                className={`w-3 h-3 rounded-full ${
-                  connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
-                }`}
-              ></div>
-              <span className="text-sm text-gray-400">
-                {connectionStatus === 'connected' ? 'Live' : 'Disconnected'}
-              </span>
             </div>
-
-            {/* Logout Button */}
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors"
-            >
-              Logout
-            </button>
+            <div className="flex-1 overflow-y-auto">
+              <PlatformStatus socket={socket} tradovateStatus={tradovateStatus} />
+            </div>
           </div>
         </div>
-      </header>
+      )}
 
-      {/* Main Content - Full Height */}
-      <main className="flex-1 overflow-hidden">
-        {currentView === 'dashboard' ? (
-          <Dashboard
-            account={selectedAccount}
-            socket={socket}
-            onRefresh={loadAccountData}
-            onAccountsLoaded={(loadedAccounts) => {
-              setAccounts(loadedAccounts);
-              if (loadedAccounts.length > 0 && !selectedAccount) {
-                // Use the same localStorage persistence logic as loadAccountData
-                const savedAccountId = localStorage.getItem('slingshot_selected_account');
-                let targetAccount = null;
-
-                if (savedAccountId) {
-                  targetAccount = loadedAccounts.find(account =>
-                    String(account.id) === String(savedAccountId)
-                  );
-                  console.log('💾 Dashboard: Found saved account in localStorage:', savedAccountId, 'Found:', !!targetAccount);
-                }
-
-                // If no saved account or saved account not found, use default fallback logic
-                if (!targetAccount) {
-                  // Try to find the default account
-                  targetAccount = loadedAccounts.find(account =>
-                    account.id === '33316485' || account.id === 33316485 ||
-                    String(account.id) === '33316485'
-                  );
-                  console.log('🎯 Dashboard: Found default account:', targetAccount);
-
-                  if (!targetAccount) {
-                    // Final fallback to first account
-                    targetAccount = loadedAccounts[0];
-                    console.log('⚠️ Dashboard: Using first account as final fallback:', targetAccount.id, targetAccount.name);
-                  }
-                }
-
-                if (targetAccount) {
-                  setSelectedAccount(targetAccount);
-                  // Save to localStorage for persistence
-                  localStorage.setItem('slingshot_selected_account', String(targetAccount.id));
-                  console.log('✅ Dashboard: Selected account:', targetAccount.id, targetAccount.name);
-                }
-              }
-            }}
-          />
-        ) : (
-          <TestTrading socket={socket} />
-        )}
-      </main>
+      {/* Macro Briefing Modal */}
+      {showMacroModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-12 px-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-white">Macro Briefing</h2>
+              <button
+                onClick={() => setShowMacroModal(false)}
+                className="text-gray-400 hover:text-white transition-colors text-xl leading-none px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <MacroBriefing />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

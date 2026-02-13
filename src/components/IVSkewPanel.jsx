@@ -228,7 +228,7 @@ const IVSkewPanel = ({ socket, quotes }) => {
 
   // Get skew color based on value
   const getSkewColor = (skew) => {
-    if (skew === null || skew === undefined) return 'text-gray-400';
+    if (skew === null || skew === undefined) return 'text-gray-300';
     if (skew < -0.02) return 'text-green-400';
     if (skew < -0.01) return 'text-green-300';
     if (skew > 0.02) return 'text-red-400';
@@ -264,21 +264,21 @@ const IVSkewPanel = ({ socket, quotes }) => {
 
   if (loading && !ivData) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-white mb-3">IV Skew</h3>
-        <div className="text-gray-400 text-sm">Loading IV data...</div>
+      <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
+        <h3 className="text-[15px] font-bold text-white mb-2">IV Skew</h3>
+        <div className="text-gray-300 text-[15px]">Loading IV data...</div>
       </div>
     );
   }
 
   if (error && !ivData) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-white mb-3">IV Skew</h3>
-        <div className="text-red-400 text-sm">{error}</div>
+      <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
+        <h3 className="text-[15px] font-bold text-white mb-2">IV Skew</h3>
+        <div className="text-red-400 text-[15px]">{error}</div>
         <button
           onClick={fetchIVSkew}
-          className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+          className="mt-1 px-2 py-0.5 bg-blue-600 text-white text-[15px] rounded hover:bg-blue-700"
         >
           Retry
         </button>
@@ -301,198 +301,122 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const shortReady = ivOk && skewShortOk && resistanceNear;
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">IV Skew</h3>
-        <div className={`px-2 py-1 rounded text-xs font-medium text-white ${signalBadge.color}`}>
+      <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
+        <h3 className="text-[15px] font-bold text-white">IV Skew</h3>
+        {ivData?.timestamp && (
+          <span className="text-[15px] text-gray-300">{new Date(ivData.timestamp).toLocaleTimeString()}</span>
+        )}
+        <div className={`px-1.5 py-0.5 rounded text-[15px] font-medium text-white ${signalBadge.color}`}>
           {signalBadge.text}
         </div>
       </div>
 
       {ivData ? (
-        <>
-          {/* Main Skew Display */}
-          <div className="bg-gray-700 rounded p-3 mb-3">
+        <div className="flex flex-col flex-1 justify-between min-h-0">
+          {/* Skew + IV row */}
+          <div className="bg-gray-700 rounded p-1.5 mb-1.5">
             <div className="flex justify-between items-center">
-              <span className="text-gray-400 text-sm">ATM Skew (Put - Call)</span>
-              <span className={`text-2xl font-mono font-bold ${getSkewColor(ivData.skew)}`}>
+              <span className="text-gray-300 text-[15px]">ATM Skew (P-C)</span>
+              <span className={`text-base font-mono font-bold ${getSkewColor(ivData.skew)}`}>
                 {formatSkew(ivData.skew)}
               </span>
             </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {ivData.skew < 0 ? 'Calls expensive (bullish flow)' : ivData.skew > 0 ? 'Puts expensive (bearish hedging)' : 'Balanced'}
+          </div>
+
+          {/* IV Details + Open Interest */}
+          <div className="grid grid-cols-3 gap-1 mb-1.5">
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">Call IV</div>
+              <div className="text-[15px] font-mono text-green-400">{formatPercent(ivData.callIV)}</div>
+            </div>
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">Put IV</div>
+              <div className="text-[15px] font-mono text-red-400">{formatPercent(ivData.putIV)}</div>
+            </div>
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">Avg IV</div>
+              <div className={`text-[15px] font-mono ${ivOk ? 'text-cyan-400' : 'text-orange-400'}`}>{formatPercent(ivData.iv)}</div>
+            </div>
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">Call Open Int</div>
+              <div className="text-[15px] font-mono text-green-400">{ivData.callOI?.toLocaleString() || '—'}</div>
+            </div>
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">Put Open Int</div>
+              <div className="text-[15px] font-mono text-red-400">{ivData.putOI?.toLocaleString() || '—'}</div>
+            </div>
+            <div className="bg-gray-700 rounded px-1.5 py-1">
+              <div className="text-[15px] text-gray-300">ATM Strike</div>
+              <div className="text-[15px] font-mono text-white">{ivData.atmStrike?.toFixed(0) || '—'}</div>
             </div>
           </div>
 
-          {/* IV Details Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-700 rounded p-2">
-              <div className="text-xs text-gray-500">Call IV</div>
-              <div className="text-lg font-mono text-green-400">
-                {formatPercent(ivData.callIV)}
-              </div>
-            </div>
-            <div className="bg-gray-700 rounded p-2">
-              <div className="text-xs text-gray-500">Put IV</div>
-              <div className="text-lg font-mono text-red-400">
-                {formatPercent(ivData.putIV)}
-              </div>
-            </div>
-            <div className="bg-gray-700 rounded p-2">
-              <div className="text-xs text-gray-500">Avg IV</div>
-              <div className={`text-lg font-mono ${ivOk ? 'text-cyan-400' : 'text-orange-400'}`}>
-                {formatPercent(ivData.iv)}
-              </div>
-            </div>
-            <div className="bg-gray-700 rounded p-2">
-              <div className="text-xs text-gray-500">ATM Strike</div>
-              <div className="text-lg font-mono text-white">
-                {ivData.atmStrike?.toFixed(0) || '—'}
-              </div>
-            </div>
-          </div>
-
-          {/* GEX Level Proximity - Mirrors strategy's findNearestLevel() */}
+          {/* GEX Level Proximity */}
           {gexProximity && (
-            <div className="mt-3 bg-gray-700 rounded p-3">
-              <div className="text-xs text-gray-500 mb-2">
-                GEX Level Proximity (NQ @ {gexProximity.price?.toFixed(2)}) — {LEVEL_PROXIMITY}pt threshold
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Support Distance */}
-                <div className={`rounded p-2 h-24 ${supportNear ? 'bg-green-900/30 border border-green-600' : 'bg-gray-600'}`}>
-                  <div className="text-xs text-gray-400">Nearest Support</div>
-                  {(gexProximity.support || gexProximity.closestSupport) ? (
-                    <>
-                      <div className="text-xs text-cyan-400 font-semibold">
-                        {(gexProximity.support || gexProximity.closestSupport).type}
-                      </div>
-                      <div className="text-sm font-mono text-cyan-400">
-                        {(gexProximity.support || gexProximity.closestSupport).level.toFixed(2)}
-                      </div>
-                      <div className={`text-lg font-mono font-bold ${supportNear ? 'text-green-400' : 'text-gray-300'}`}>
-                        {(gexProximity.support || gexProximity.closestSupport).distance.toFixed(1)} pts
-                        {supportNear && <span className="text-xs ml-2">✓</span>}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-gray-500">—</div>
-                  )}
+            <div className="bg-gray-700 rounded p-1.5 mb-1.5">
+              <div className="text-[15px] text-gray-300 mb-1">GEX Proximity ({LEVEL_PROXIMITY}pt threshold)</div>
+              <div className="space-y-1 font-mono text-[15px]">
+                <div className={`flex items-center rounded px-1.5 py-1 ${supportNear ? 'bg-green-900/30 border border-green-600' : 'bg-gray-600'}`}>
+                  <span className="text-gray-300 flex-1" style={{ fontFamily: 'inherit' }}>Support</span>
+                  <span className="text-cyan-400 w-[4.5rem] text-right flex-shrink-0">{(gexProximity.support || gexProximity.closestSupport)?.type || '—'}</span>
+                  <span className="text-gray-300 w-20 text-right flex-shrink-0">
+                    {(gexProximity.support || gexProximity.closestSupport) ? (Math.round((gexProximity.support || gexProximity.closestSupport).level * 4) / 4).toFixed(2) : '—'}
+                  </span>
+                  <span className={`w-20 text-right flex-shrink-0 ${supportNear ? 'text-green-400 font-bold' : 'text-gray-300'}`}>
+                    {(gexProximity.support || gexProximity.closestSupport) ? `${(Math.round((gexProximity.support || gexProximity.closestSupport).distance * 4) / 4).toFixed(2)}pt` : '—'}
+                  </span>
+                  <span className="w-4 text-center flex-shrink-0">{supportNear ? <span className="text-green-400">✓</span> : ''}</span>
                 </div>
-
-                {/* Resistance Distance */}
-                <div className={`rounded p-2 h-24 ${resistanceNear ? 'bg-red-900/30 border border-red-600' : 'bg-gray-600'}`}>
-                  <div className="text-xs text-gray-400">Nearest Resistance</div>
-                  {(gexProximity.resistance || gexProximity.closestResistance) ? (
-                    <>
-                      <div className="text-xs text-orange-400 font-semibold">
-                        {(gexProximity.resistance || gexProximity.closestResistance).type}
-                      </div>
-                      <div className="text-sm font-mono text-orange-400">
-                        {(gexProximity.resistance || gexProximity.closestResistance).level.toFixed(2)}
-                      </div>
-                      <div className={`text-lg font-mono font-bold ${resistanceNear ? 'text-red-400' : 'text-gray-300'}`}>
-                        {(gexProximity.resistance || gexProximity.closestResistance).distance.toFixed(1)} pts
-                        {resistanceNear && <span className="text-xs ml-2">✓</span>}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-gray-500">—</div>
-                  )}
+                <div className={`flex items-center rounded px-1.5 py-1 ${resistanceNear ? 'bg-red-900/30 border border-red-600' : 'bg-gray-600'}`}>
+                  <span className="text-gray-300 flex-1" style={{ fontFamily: 'inherit' }}>Resistance</span>
+                  <span className="text-orange-400 w-[4.5rem] text-right flex-shrink-0">{(gexProximity.resistance || gexProximity.closestResistance)?.type || '—'}</span>
+                  <span className="text-gray-300 w-20 text-right flex-shrink-0">
+                    {(gexProximity.resistance || gexProximity.closestResistance) ? (Math.round((gexProximity.resistance || gexProximity.closestResistance).level * 4) / 4).toFixed(2) : '—'}
+                  </span>
+                  <span className={`w-20 text-right flex-shrink-0 ${resistanceNear ? 'text-red-400 font-bold' : 'text-gray-300'}`}>
+                    {(gexProximity.resistance || gexProximity.closestResistance) ? `${(Math.round((gexProximity.resistance || gexProximity.closestResistance).distance * 4) / 4).toFixed(2)}pt` : '—'}
+                  </span>
+                  <span className="w-4 text-center flex-shrink-0">{resistanceNear ? <span className="text-red-400">✓</span> : ''}</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Signal Readiness Checklist */}
-          <div className="mt-3 bg-gray-700 rounded p-3">
-            <div className="flex justify-between items-center mb-2">
-              <div className="text-xs text-gray-500">Signal Readiness</div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Next candle:</span>
-                <span className={`text-sm font-mono font-bold ${candleCountdown <= 5 ? 'text-yellow-400 animate-pulse' : 'text-cyan-400'}`}>
-                  {candleCountdown}s
-                </span>
-              </div>
+          {/* Signal Readiness — merged Long/Short into rows */}
+          <div className="bg-gray-700 rounded p-1.5 mb-1.5">
+            <div className="flex justify-between items-center mb-1">
+              <div className="text-[15px] text-gray-300">Signal Readiness</div>
+              <span className={`text-[15px] font-mono font-bold ${candleCountdown <= 5 ? 'text-yellow-400 animate-pulse' : 'text-cyan-400'}`}>
+                {candleCountdown}s
+              </span>
             </div>
-
-            {/* Long Conditions */}
-            <div className="mb-2">
-              <div className="text-xs text-cyan-400 font-semibold mb-1">LONG Conditions:</div>
-              <div className="grid grid-cols-3 gap-1 text-xs">
-                <div className={skewLongOk ? 'text-green-400' : 'text-gray-500'}>
-                  {skewLongOk ? '✓' : '○'} Skew &lt; -1%
-                </div>
-                <div className={ivOk ? 'text-green-400' : 'text-gray-500'}>
-                  {ivOk ? '✓' : '○'} IV ≥ 18%
-                </div>
-                <div className={supportNear ? 'text-green-400' : 'text-gray-500'}>
-                  {supportNear ? '✓' : '○'} Near Support
-                </div>
+            <div className="space-y-0.5 text-[15px]">
+              <div className="flex items-center">
+                <span className="text-cyan-400 font-semibold w-16 flex-shrink-0">LONG</span>
+                <span className={`flex-1 ${skewLongOk ? 'text-green-400' : 'text-gray-300'}`}>{skewLongOk ? '✓' : '○'} Skew</span>
+                <span className={`flex-1 ${ivOk ? 'text-green-400' : 'text-gray-300'}`}>{ivOk ? '✓' : '○'} IV</span>
+                <span className={`flex-1 ${supportNear ? 'text-green-400' : 'text-gray-300'}`}>{supportNear ? '✓' : '○'} Support</span>
+                {longReady && <span className="text-green-400 font-bold animate-pulse flex-shrink-0">READY</span>}
               </div>
-              {longReady && (
-                <div className="mt-1 text-xs text-green-400 font-bold animate-pulse">
-                  → LONG SIGNAL READY
-                </div>
-              )}
-            </div>
-
-            {/* Short Conditions */}
-            <div>
-              <div className="text-xs text-orange-400 font-semibold mb-1">SHORT Conditions:</div>
-              <div className="grid grid-cols-3 gap-1 text-xs">
-                <div className={skewShortOk ? 'text-red-400' : 'text-gray-500'}>
-                  {skewShortOk ? '✓' : '○'} Skew &gt; +1%
-                </div>
-                <div className={ivOk ? 'text-green-400' : 'text-gray-500'}>
-                  {ivOk ? '✓' : '○'} IV ≥ 18%
-                </div>
-                <div className={resistanceNear ? 'text-red-400' : 'text-gray-500'}>
-                  {resistanceNear ? '✓' : '○'} Near Resistance
-                </div>
+              <div className="flex items-center">
+                <span className="text-orange-400 font-semibold w-16 flex-shrink-0">SHORT</span>
+                <span className={`flex-1 ${skewShortOk ? 'text-red-400' : 'text-gray-300'}`}>{skewShortOk ? '✓' : '○'} Skew</span>
+                <span className={`flex-1 ${ivOk ? 'text-green-400' : 'text-gray-300'}`}>{ivOk ? '✓' : '○'} IV</span>
+                <span className={`flex-1 ${resistanceNear ? 'text-red-400' : 'text-gray-300'}`}>{resistanceNear ? '✓' : '○'} Resist</span>
+                {shortReady && <span className="text-red-400 font-bold animate-pulse flex-shrink-0">READY</span>}
               </div>
-              {shortReady && (
-                <div className="mt-1 text-xs text-red-400 font-bold animate-pulse">
-                  → SHORT SIGNAL READY
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Open Interest */}
-          {(ivData.callOI || ivData.putOI) && (
-            <div className="mt-2 bg-gray-700 rounded p-2">
-              <div className="text-xs text-gray-500 mb-1">ATM Open Interest</div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-gray-400">Call OI:</span>
-                  <span className="text-green-400 ml-1 font-mono">
-                    {ivData.callOI?.toLocaleString() || '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Put OI:</span>
-                  <span className="text-red-400 ml-1 font-mono">
-                    {ivData.putOI?.toLocaleString() || '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       ) : (
-        <div className="text-gray-400 text-sm text-center py-4">
+        <div className="text-gray-300 text-[15px] text-center py-2">
           No IV data available
         </div>
       )}
 
-      {/* Last Update */}
-      {ivData?.timestamp && (
-        <div className="mt-2 text-xs text-gray-500 text-center">
-          Last update: {new Date(ivData.timestamp).toLocaleTimeString()}
-        </div>
-      )}
     </div>
   );
 };

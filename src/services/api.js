@@ -49,9 +49,11 @@ apiClient.interceptors.response.use(
 
     // Handle 401 unauthorized responses
     if (error.response?.status === 401) {
-      console.log('🚫 Received 401 - clearing token and reloading');
+      console.log('🚫 Received 401 - clearing token');
       localStorage.removeItem('dashboardToken');
-      window.location.reload(); // Force reload to show login screen
+      // Don't reload the page — React state handles showing the login screen.
+      // window.location.reload() here causes an infinite loop when
+      // useTradingData fires before authentication.
       return Promise.reject(new Error('Authentication required'));
     }
 
@@ -264,7 +266,7 @@ export const api = {
     }
   },
 
-  // Candle history from signal-generator (for chart initialization)
+  // Candle history from siggen-nq-ivskew (for chart initialization)
   async getCandles(count = 60) {
     try {
       return await apiClient.get(`/api/candles?count=${count}`);
@@ -274,7 +276,7 @@ export const api = {
     }
   },
 
-  // GEX levels from signal-generator
+  // GEX levels from siggen-nq-ivskew
   async getGexLevels() {
     try {
       return await apiClient.get('/api/gex/levels');
@@ -294,7 +296,57 @@ export const api = {
     }
   },
 
-  // Tradier GEX levels from signal-generator
+  // ES GEX levels from siggen-es-cross
+  async getEsGexLevels() {
+    try {
+      return await apiClient.get('/api/es/gex/levels');
+    } catch (error) {
+      console.log('ES GEX levels not available:', error.message);
+      return null;
+    }
+  },
+
+  // Refresh ES GEX levels - force recalculation
+  async refreshEsGexLevels() {
+    try {
+      return await apiClient.post('/api/es/gex/refresh');
+    } catch (error) {
+      console.error('Failed to refresh ES GEX levels:', error.message);
+      throw error;
+    }
+  },
+
+  // ES Tradier GEX levels from siggen-es-cross
+  async getEsTradierGexLevels() {
+    try {
+      return await apiClient.get('/api/es/tradier/gex/levels');
+    } catch (error) {
+      console.log('ES Tradier GEX levels not available:', error.message);
+      return null;
+    }
+  },
+
+  // Refresh ES Tradier GEX levels - force recalculation
+  async refreshEsTradierGexLevels() {
+    try {
+      return await apiClient.post('/api/es/tradier/gex/refresh');
+    } catch (error) {
+      console.error('Failed to refresh ES Tradier GEX levels:', error.message);
+      throw error;
+    }
+  },
+
+  // ES candle history from siggen-es-cross (for chart initialization)
+  async getEsCandles(count = 60) {
+    try {
+      return await apiClient.get(`/api/es/candles?count=${count}`);
+    } catch (error) {
+      console.log('ES candle history not available:', error.message);
+      return null;
+    }
+  },
+
+  // Tradier GEX levels from siggen-nq-ivskew
   async getTradierGexLevels() {
     try {
       return await apiClient.get('/api/tradier/gex/levels');
@@ -324,7 +376,7 @@ export const api = {
     }
   },
 
-  // Get signal-generator detailed connection status
+  // Get siggen-nq-ivskew detailed connection status
   async getSignalGeneratorStatus() {
     try {
       return await apiClient.get('/api/signal-generator/status');
@@ -334,7 +386,17 @@ export const api = {
     }
   },
 
-  // Strategy status from signal-generator (GEX Scalp strategy)
+  // Get siggen-es-cross detailed connection status
+  async getESSignalGeneratorStatus() {
+    try {
+      return await apiClient.get('/api/es-signal-generator/status');
+    } catch (error) {
+      console.log('ES signal generator status not available:', error.message);
+      return null;
+    }
+  },
+
+  // Strategy status from siggen-nq-ivskew
   async getStrategyStatus() {
     try {
       return await apiClient.get('/api/strategy/gex-scalp/status');
@@ -344,7 +406,17 @@ export const api = {
     }
   },
 
-  // IV Skew data from signal-generator
+  // ES Cross-Signal strategy status from siggen-es-cross
+  async getESCrossSignalStatus() {
+    try {
+      return await apiClient.get('/api/strategy/es-cross-signal/status');
+    } catch (error) {
+      console.log('ES cross-signal status not available:', error.message);
+      return null;
+    }
+  },
+
+  // IV Skew data from siggen-nq-ivskew
   async getIVSkew() {
     try {
       return await apiClient.get('/api/iv/skew');
@@ -354,7 +426,7 @@ export const api = {
     }
   },
 
-  // IV Skew history from signal-generator
+  // IV Skew history from siggen-nq-ivskew
   async getIVHistory() {
     try {
       return await apiClient.get('/api/iv/history');
@@ -362,6 +434,19 @@ export const api = {
       console.log('IV history not available:', error.message);
       return null;
     }
+  },
+
+  // Macro Briefing endpoints
+  async getLatestBriefing() {
+    return await apiClient.get('/api/briefing/latest');
+  },
+
+  async getBriefingStatus() {
+    return await apiClient.get('/api/briefing/status');
+  },
+
+  async generateBriefing() {
+    return await apiClient.post('/api/briefing/generate');
   },
 
   async reSync() {
