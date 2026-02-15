@@ -35,6 +35,12 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [, setRelayStatus] = useState({ isRunning: false, connectionUrl: null, lastError: null, uptime: 0 });
   const [, setRelayLogs] = useState([]);
 
+  // TradingView token
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenSubmitting, setTokenSubmitting] = useState(false);
+  const [tokenMessage, setTokenMessage] = useState(null);
+
   // Sync
   const [isFullSyncing, setIsFullSyncing] = useState(false);
 
@@ -155,6 +161,32 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     if (age < 60) return `${Math.floor(age)}s ago`;
     if (age < 3600) return `${Math.floor(age / 60)}m ago`;
     return `${Math.floor(age / 3600)}h ago`;
+  };
+
+  const formatTTL = (seconds) => {
+    if (seconds === null || seconds === undefined) return 'N/A';
+    if (seconds < 0) return `Expired ${Math.floor(-seconds / 60)}m ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  };
+
+  const handleTokenSubmit = async (e) => {
+    e.preventDefault();
+    if (!tokenInput.trim()) return;
+    setTokenSubmitting(true);
+    setTokenMessage(null);
+    try {
+      const result = await api.setTradingViewToken(tokenInput.trim());
+      setTokenMessage({ type: 'success', text: `Token set (TTL: ${formatTTL(result.tokenTTL)})` });
+      setTokenInput('');
+      setShowTokenForm(false);
+      setTimeout(fetchSignalGeneratorConnections, 2000);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to set token';
+      setTokenMessage({ type: 'error', text: msg });
+    } finally {
+      setTokenSubmitting(false);
+    }
   };
 
   // --- On mount ---
@@ -638,10 +670,59 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                      <div><span className="text-gray-400">Auth State:</span> <span className={
+                        signalGeneratorConnections.connections.tradingview?.authState === 'authenticated' ? 'text-green-400' :
+                        signalGeneratorConnections.connections.tradingview?.authState === 'delayed' ? 'text-red-400' : 'text-yellow-400'
+                      }>{(signalGeneratorConnections.connections.tradingview?.authState || 'unknown').charAt(0).toUpperCase() + (signalGeneratorConnections.connections.tradingview?.authState || 'unknown').slice(1)}</span></div>
+                      <div><span className="text-gray-400">Token TTL:</span> <span className={
+                        signalGeneratorConnections.connections.tradingview?.tokenTTL != null && signalGeneratorConnections.connections.tradingview.tokenTTL < 0 ? 'text-red-400' :
+                        signalGeneratorConnections.connections.tradingview?.tokenTTL != null && signalGeneratorConnections.connections.tradingview.tokenTTL < 3600 ? 'text-yellow-400' : 'text-white'
+                      }>{formatTTL(signalGeneratorConnections.connections.tradingview?.tokenTTL)}</span></div>
                       <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
-                      <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastHeartbeat)}</span></div>
                       <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
-                      <div><span className="text-gray-400">Symbols:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.symbols?.length || 0}</span></div>
+                    </div>
+                    {/* Set Token */}
+                    <div className="mt-2">
+                      {!showTokenForm ? (
+                        <button
+                          onClick={() => { setShowTokenForm(true); setTokenMessage(null); }}
+                          className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                        >
+                          Set Token
+                        </button>
+                      ) : (
+                        <form onSubmit={handleTokenSubmit} className="space-y-2">
+                          <textarea
+                            value={tokenInput}
+                            onChange={(e) => setTokenInput(e.target.value)}
+                            placeholder="Paste JWT token (eyJ...)"
+                            className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={tokenSubmitting || !tokenInput.trim()}
+                              className="text-xs px-3 py-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+                            >
+                              {tokenSubmitting ? 'Setting...' : 'Submit'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setShowTokenForm(false); setTokenInput(''); setTokenMessage(null); }}
+                              className="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      {tokenMessage && (
+                        <div className={`mt-1 text-xs ${tokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                          {tokenMessage.text}
+                        </div>
+                      )}
                     </div>
                   </div>
 

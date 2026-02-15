@@ -6,6 +6,10 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenSubmitting, setTokenSubmitting] = useState(false);
+  const [tokenMessage, setTokenMessage] = useState(null);
 
   const fetchStatus = async () => {
     try {
@@ -66,6 +70,43 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
     return `${Math.floor(age / 3600)}h ago`;
   };
 
+  const formatTTL = (seconds) => {
+    if (seconds === null || seconds === undefined) return 'N/A';
+    if (seconds < 0) return `Expired ${Math.floor(-seconds / 60)}m ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  };
+
+  const getAuthStateColor = (authState) => {
+    switch (authState) {
+      case 'authenticated': return 'text-green-400';
+      case 'delayed': return 'text-red-400';
+      default: return 'text-yellow-400';
+    }
+  };
+
+  const handleTokenSubmit = async (e) => {
+    e.preventDefault();
+    if (!tokenInput.trim()) return;
+
+    setTokenSubmitting(true);
+    setTokenMessage(null);
+
+    try {
+      const result = await api.setTradingViewToken(tokenInput.trim());
+      setTokenMessage({ type: 'success', text: `Token set (TTL: ${formatTTL(result.tokenTTL)})` });
+      setTokenInput('');
+      setShowTokenForm(false);
+      // Refresh status to show updated auth state
+      setTimeout(fetchStatus, 2000);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to set token';
+      setTokenMessage({ type: 'error', text: msg });
+    } finally {
+      setTokenSubmitting(false);
+    }
+  };
+
   if (isLoading && !status) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
@@ -75,6 +116,12 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
       </div>
     );
   }
+
+  const tvAuth = status?.connections?.tradingview;
+  const tokenTTL = tvAuth?.tokenTTL;
+  const authState = tvAuth?.authState;
+  const isTokenLow = tokenTTL !== null && tokenTTL !== undefined && tokenTTL < 3600;
+  const isTokenExpired = tokenTTL !== null && tokenTTL !== undefined && tokenTTL < 0;
 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
@@ -110,6 +157,14 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
           connected={status?.connections?.tradingview?.connected}
           detail={formatAge(status?.connections?.tradingview?.lastQuoteReceived)}
         />
+        {/* Auth state badge - show when degraded or token expiring */}
+        {(authState === 'delayed' || isTokenExpired) && (
+          <ConnectionBadge
+            label="Auth"
+            connected={false}
+            detail={isTokenExpired ? 'Token Expired' : 'Delayed Quotes'}
+          />
+        )}
         <ConnectionBadge
           label="LT Monitor"
           connected={status?.connections?.ltMonitor?.connected}
@@ -137,12 +192,56 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
             label="TradingView WebSocket"
             status={status?.connections?.tradingview?.connected}
             details={[
+              { label: 'Auth State', value: (authState || 'unknown').charAt(0).toUpperCase() + (authState || 'unknown').slice(1), color: getAuthStateColor(authState) },
+              { label: 'Token TTL', value: formatTTL(tokenTTL), color: isTokenExpired ? 'text-red-400' : isTokenLow ? 'text-yellow-400' : undefined },
               { label: 'Last Quote', value: formatAge(status?.connections?.tradingview?.lastQuoteReceived) },
-              { label: 'Last Heartbeat', value: formatAge(status?.connections?.tradingview?.lastHeartbeat) },
-              { label: 'Reconnects', value: status?.connections?.tradingview?.reconnectAttempts || '0' },
-              { label: 'Symbols', value: (status?.connections?.tradingview?.symbols?.length || 0).toString() }
+              { label: 'Reconnects', value: status?.connections?.tradingview?.reconnectAttempts || '0' }
             ]}
           />
+
+          {/* Set Token Button & Form */}
+          <div className="pl-3">
+            {!showTokenForm ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowTokenForm(true); setTokenMessage(null); }}
+                className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+              >
+                Set Token
+              </button>
+            ) : (
+              <form onSubmit={handleTokenSubmit} onClick={(e) => e.stopPropagation()} className="space-y-2">
+                <textarea
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  placeholder="Paste JWT token (eyJ...)"
+                  className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
+                  rows={3}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={tokenSubmitting || !tokenInput.trim()}
+                    className="text-xs px-3 py-1.5 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+                  >
+                    {tokenSubmitting ? 'Setting...' : 'Submit'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowTokenForm(false); setTokenInput(''); setTokenMessage(null); }}
+                    className="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            {tokenMessage && (
+              <div className={`mt-2 text-xs ${tokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                {tokenMessage.text}
+              </div>
+            )}
+          </div>
 
           {/* LT Monitor Details */}
           <ConnectionDetailRow
@@ -266,7 +365,7 @@ const ConnectionDetailRow = ({ icon, label, status, statusLabel, marketClosed, d
         {details.map((detail, idx) => (
           <div key={idx} className="flex flex-col">
             <span className="text-gray-400">{detail.label}</span>
-            <span className="text-white font-mono">{detail.value}</span>
+            <span className={`font-mono ${detail.color || 'text-white'}`}>{detail.value}</span>
           </div>
         ))}
       </div>

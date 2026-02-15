@@ -386,6 +386,10 @@ export const api = {
     }
   },
 
+  async setTradingViewToken(token) {
+    return await apiClient.post('/api/tradingview/token', { token });
+  },
+
   // Get siggen-es-cross detailed connection status
   async getESSignalGeneratorStatus() {
     try {
