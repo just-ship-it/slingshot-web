@@ -86,7 +86,8 @@ const MacroBriefing = () => {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
+    // Append T12:00:00 to avoid UTC midnight parsing which shifts the day back in US timezones
+    const d = new Date(dateStr + 'T12:00:00');
     return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
