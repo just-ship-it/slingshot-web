@@ -330,6 +330,7 @@ const Dashboard = ({
             onToggle={onToggleTradingPanel}
             tradingData={tradingData}
             isLoading={tradingDataLoading}
+            quotes={quotes}
           />
         )}
         {!tradingPanelOpen && (
@@ -338,6 +339,7 @@ const Dashboard = ({
             onToggle={onToggleTradingPanel}
             tradingData={tradingData}
             isLoading={tradingDataLoading}
+            quotes={quotes}
           />
         )}
       </div>
@@ -348,6 +350,7 @@ const Dashboard = ({
           onToggle={() => {}}
           tradingData={tradingData}
           isLoading={tradingDataLoading}
+          quotes={quotes}
         />
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import QuickOrder from './QuickOrder';
 
 const formatCurrency = (amount) => {
   if (amount == null) return '--';
@@ -110,7 +111,7 @@ const OrderCard = ({ order }) => {
   );
 };
 
-const TradingPanel = ({ open, onToggle, tradingData, isLoading }) => {
+const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
   const positions = tradingData?.openPositions || [];
   const orders = tradingData?.pendingOrders || [];
   const posCount = positions.length;
@@ -156,6 +157,8 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading }) => {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
+        <QuickOrder quotes={quotes} />
+
         {isLoading && !tradingData && (
           <div className="text-center text-gray-500 py-8 text-sm">Loading...</div>
         )}
