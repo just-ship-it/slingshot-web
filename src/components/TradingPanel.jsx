@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import axios from 'axios';
 import QuickOrder from './QuickOrder';
 
 const formatCurrency = (amount) => {
@@ -27,7 +28,7 @@ const getHandleDotColor = (tradingData) => {
   return 'bg-gray-500';
 };
 
-const PositionCard = ({ position }) => {
+const PositionCard = ({ position, onClose, isClosing }) => {
   const side = position.side?.toLowerCase();
   const isLong = side === 'long';
   const quantity = Math.abs(position.netPos || position.quantity || position.signalContext?.quantity || 0);
@@ -68,11 +69,21 @@ const PositionCard = ({ position }) => {
           {formatCurrency(currentPrice)}
         </span>
       </div>
-      {/* Line 3: SL / TP / trailing */}
-      <div className="flex items-center gap-2 mt-0.5 text-xs">
-        {stopPrice && <span className="text-orange-400">SL {formatCurrency(stopPrice)}</span>}
-        {targetPrice && <span className="text-blue-400">TP {formatCurrency(targetPrice)}</span>}
-        {trailingText && <span className="text-purple-300">{trailingText}</span>}
+      {/* Line 3: SL / TP / trailing + close button */}
+      <div className="flex items-center justify-between mt-0.5">
+        <div className="flex items-center gap-2 text-xs">
+          {stopPrice && <span className="text-orange-400">SL {formatCurrency(stopPrice)}</span>}
+          {targetPrice && <span className="text-blue-400">TP {formatCurrency(targetPrice)}</span>}
+          {trailingText && <span className="text-purple-300">{trailingText}</span>}
+        </div>
+        <button
+          onClick={() => onClose(position)}
+          disabled={isClosing}
+          className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-red-600/80 hover:bg-red-500
+                     disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors leading-tight"
+        >
+          {isClosing ? 'Closing...' : 'Close'}
+        </button>
       </div>
     </div>
   );
@@ -112,11 +123,43 @@ const OrderCard = ({ order }) => {
 };
 
 const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
+  const [closingPositions, setClosingPositions] = useState(new Set());
   const positions = tradingData?.openPositions || [];
   const orders = tradingData?.pendingOrders || [];
   const posCount = positions.length;
   const ordCount = orders.length;
   const hasItems = posCount > 0 || ordCount > 0;
+
+  const handleClosePosition = async (position) => {
+    const sideLabel = position.side?.toLowerCase() === 'long' ? 'LONG' : 'SHORT';
+    if (!window.confirm(`Close ${sideLabel} ${position.symbol} position?`)) return;
+
+    setClosingPositions(prev => new Set(prev).add(position.symbol));
+
+    try {
+      const payload = {
+        webhook_type: 'trading_signal',
+        action: 'position_closed',
+        side: position.side?.toLowerCase() === 'long' ? 'buy' : 'sell',
+        symbol: position.symbol,
+        strategy: 'MANUAL',
+        source: 'dashboard-close',
+        timestamp: new Date().toISOString(),
+      };
+      const url = process.env.REACT_APP_API_URL || 'http://localhost:3014';
+      await axios.post(`${url}/webhook`, payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      alert(`Failed to close position: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setClosingPositions(prev => {
+        const next = new Set(prev);
+        next.delete(position.symbol);
+        return next;
+      });
+    }
+  };
 
   // Collapsed: absolutely-positioned handle on the right edge of the bottom row
   if (!open) {
@@ -176,7 +219,12 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
               Positions
             </div>
             {positions.map((pos, i) => (
-              <PositionCard key={pos.positionId || pos.symbol || i} position={pos} />
+              <PositionCard
+                key={pos.positionId || pos.symbol || i}
+                position={pos}
+                onClose={handleClosePosition}
+                isClosing={closingPositions.has(pos.symbol)}
+              />
             ))}
           </div>
         )}
