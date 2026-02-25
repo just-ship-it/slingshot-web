@@ -8,6 +8,7 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [candleCountdown, setCandleCountdown] = useState(0);
+  const [strategyBlockers, setStrategyBlockers] = useState([]);
 
   // Update candle countdown every second
   useEffect(() => {
@@ -65,18 +66,35 @@ const IVSkewPanel = ({ socket, quotes }) => {
     }
   };
 
+  // Fetch strategy status for blockers
+  const fetchStrategyStatus = async () => {
+    try {
+      const response = await api.getIVSkewGexStatus();
+      if (response?.evaluation_readiness?.blockers) {
+        setStrategyBlockers(response.evaluation_readiness.blockers);
+      } else {
+        setStrategyBlockers([]);
+      }
+    } catch (err) {
+      // silent
+    }
+  };
+
   // Initial fetch and polling
   useEffect(() => {
     fetchIVSkew();
     fetchGexLevels();
+    fetchStrategyStatus();
 
-    // Refresh IV every 30 seconds, GEX every 60 seconds
+    // Refresh IV every 30 seconds, GEX every 60 seconds, strategy every 10 seconds
     const ivInterval = setInterval(fetchIVSkew, 30000);
     const gexInterval = setInterval(fetchGexLevels, 60000);
+    const stratInterval = setInterval(fetchStrategyStatus, 10000);
 
     return () => {
       clearInterval(ivInterval);
       clearInterval(gexInterval);
+      clearInterval(stratInterval);
     };
   }, []);
 
@@ -409,6 +427,17 @@ const IVSkewPanel = ({ socket, quotes }) => {
               </div>
             </div>
           </div>
+
+          {/* Strategy Blockers */}
+          {strategyBlockers.length > 0 && (
+            <div className="bg-gray-700 rounded p-1.5 mb-1.5">
+              <div className="space-y-0.5 text-[12px]">
+                {strategyBlockers.map((b, i) => (
+                  <div key={i} className="text-yellow-400">{b}</div>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
       ) : (

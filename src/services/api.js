@@ -420,6 +420,26 @@ export const api = {
     }
   },
 
+  // IV Skew GEX strategy status from multi-strategy engine
+  async getIVSkewGexStatus() {
+    try {
+      return await apiClient.get('/api/strategy/iv-skew-gex/status');
+    } catch (error) {
+      console.log('IV skew GEX status not available:', error.message);
+      return null;
+    }
+  },
+
+  // AI Trader status from siggen-nq-aitrader
+  async getAITraderStatus() {
+    try {
+      return await apiClient.get('/api/strategy/ai-trader/status');
+    } catch (error) {
+      console.log('AI trader status not available:', error.message);
+      return null;
+    }
+  },
+
   // IV Skew data from siggen-nq-ivskew
   async getIVSkew() {
     try {

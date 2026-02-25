@@ -89,7 +89,7 @@ const PositionCard = ({ position, onClose, isClosing }) => {
   );
 };
 
-const OrderCard = ({ order }) => {
+const OrderCard = ({ order, onCancel, isCancelling }) => {
   const action = order.action?.toLowerCase();
   const isLong = action === 'long' || action === 'buy';
   const quantity = order.quantity || 0;
@@ -98,23 +98,28 @@ const OrderCard = ({ order }) => {
 
   return (
     <div className="px-2.5 py-2 border-b border-gray-700 last:border-b-0">
-      {/* Line 1: side dot + symbol + qty + status */}
+      {/* Line 1: side dot + symbol + qty + cancel button */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isLong ? 'bg-green-400' : 'bg-red-400'}`} />
           <span className="text-white font-semibold text-sm">{order.symbol}</span>
           <span className="text-gray-400 text-xs">x{quantity}</span>
         </div>
-        <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-medium">
-          {order.orderStatus || 'Working'}
-        </span>
+        <button
+          onClick={() => onCancel(order)}
+          disabled={isCancelling}
+          className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-red-600/80 hover:bg-red-500
+                     disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors leading-tight"
+        >
+          {isCancelling ? 'Cancelling...' : 'Cancel'}
+        </button>
       </div>
       {/* Line 2: order price + distance */}
       <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
         <span>@ {formatCurrency(orderPrice)}</span>
         {distance?.points != null && (
           <span className="text-gray-500">
-            ({distance.points.toFixed(1)}pt away)
+            ({distance.points.toFixed(2)}pt away)
           </span>
         )}
       </div>
@@ -124,6 +129,7 @@ const OrderCard = ({ order }) => {
 
 const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
   const [closingPositions, setClosingPositions] = useState(new Set());
+  const [cancellingOrders, setCancellingOrders] = useState(new Set());
   const positions = tradingData?.openPositions || [];
   const orders = tradingData?.pendingOrders || [];
   const posCount = positions.length;
@@ -156,6 +162,40 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
       setClosingPositions(prev => {
         const next = new Set(prev);
         next.delete(position.symbol);
+        return next;
+      });
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    const sideLabel = (order.action || '').toUpperCase();
+    if (!window.confirm(`Cancel ${sideLabel} ${order.symbol} limit @ ${formatCurrency(order.price)}?`)) return;
+
+    const orderId = order.orderId || order.symbol;
+    setCancellingOrders(prev => new Set(prev).add(orderId));
+
+    try {
+      const strategy = order.strategy || order.signalContext?.strategy;
+      const payload = {
+        webhook_type: 'trading_signal',
+        action: 'cancel_limit',
+        side: (order.action || '').toLowerCase(),
+        symbol: order.symbol,
+        ...(strategy && { strategy }),
+        reason: 'Manual cancel from dashboard',
+        source: 'dashboard-cancel',
+        timestamp: new Date().toISOString(),
+      };
+      const url = process.env.REACT_APP_API_URL || 'http://localhost:3014';
+      await axios.post(`${url}/webhook`, payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      alert(`Failed to cancel order: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setCancellingOrders(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
         return next;
       });
     }
@@ -236,7 +276,12 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
               Orders
             </div>
             {orders.map((order, i) => (
-              <OrderCard key={order.orderId || i} order={order} />
+              <OrderCard
+                key={order.orderId || i}
+                order={order}
+                onCancel={handleCancelOrder}
+                isCancelling={cancellingOrders.has(order.orderId || order.symbol)}
+              />
             ))}
           </div>
         )}

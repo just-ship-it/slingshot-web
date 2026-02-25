@@ -4,7 +4,9 @@ import GexChart from './GexChart';
 import IVSkewPanel from './IVSkewPanel';
 import ESCrossSignalPanel from './ESCrossSignalPanel';
 import ESGexLevelsPanel from './ESGexLevelsPanel';
+import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
+import AITraderPanel from './AITraderPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({
@@ -296,13 +298,18 @@ const Dashboard = ({
           <IVSkewPanel socket={socket} quotes={quotes} />
         </div>
         <div className="panel-gex">
-          <GexComparisonPanel gexData={gexData} onRefresh={fetchGexData} />
+          <TabbedGexPanel
+            nqGexData={gexData}
+            esGexData={esGexData}
+            onRefreshNq={fetchGexData}
+            onRefreshEs={fetchEsGexData}
+          />
         </div>
         <div className="panel-es-cross">
           <ESCrossSignalPanel socket={socket} quotes={quotes} />
         </div>
-        <div className="panel-es-gex">
-          <ESGexLevelsPanel gexData={esGexData} onRefresh={fetchEsGexData} />
+        <div className="panel-ai-trader">
+          <AITraderPanel />
         </div>
       </div>
       {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}

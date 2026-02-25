@@ -12,6 +12,7 @@ const Toast = ({ toast, onDismiss }) => {
   const colorMap = {
     order_placed: 'border-yellow-500 bg-yellow-500/10',
     order_filled: 'border-green-500 bg-green-500/10',
+    order_cancelled: 'border-orange-500 bg-orange-500/10',
     position_opened: 'border-blue-500 bg-blue-500/10',
     position_closed: 'border-gray-400 bg-gray-400/10',
   };
@@ -19,6 +20,7 @@ const Toast = ({ toast, onDismiss }) => {
   const iconMap = {
     order_placed: '\u{1F4CB}',
     order_filled: '\u2705',
+    order_cancelled: '\u{1F6AB}',
     position_opened: '\u{1F4C8}',
     position_closed: '\u{1F4C9}',
   };
@@ -77,6 +79,13 @@ export const formatToastMessage = (event) => {
       const sym = data.symbol || '?';
       const qty = data.quantity || 1;
       return `Order filled: ${side} ${sym} x${qty}`;
+    }
+    case 'order_cancelled': {
+      const side = (data.action || data.side || '').toUpperCase();
+      const sym = data.symbol || '?';
+      const qty = data.quantity || 1;
+      const price = data.price ? ` @ ${formatPrice(data.price)}` : '';
+      return `Order cancelled: ${side} ${sym} x${qty}${price}`;
     }
     case 'position_opened': {
       const side = (data.side || '').toUpperCase() || (data.netPos > 0 ? 'LONG' : 'SHORT');

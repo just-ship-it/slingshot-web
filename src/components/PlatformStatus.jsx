@@ -26,8 +26,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [microserviceHealth, setMicroserviceHealth] = useState({});
   const [signalGeneratorConnections, setSignalGeneratorConnections] = useState(null);
   const [sgConnectionsExpanded, setSgConnectionsExpanded] = useState(false);
-  const [esSignalGeneratorConnections, setEsSignalGeneratorConnections] = useState(null);
-  const [esConnectionsExpanded, setEsConnectionsExpanded] = useState(false);
   const [macroBriefingHealth, setMacroBriefingHealth] = useState(null);
   const [isBriefingGenerating, setIsBriefingGenerating] = useState(false);
 
@@ -103,15 +101,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       if (data) setSignalGeneratorConnections(data);
     } catch (err) {
       console.log('Signal generator status not available:', err.message);
-    }
-  };
-
-  const fetchESSignalGeneratorConnections = async () => {
-    try {
-      const data = await api.getESSignalGeneratorStatus();
-      if (data) setEsSignalGeneratorConnections(data);
-    } catch (err) {
-      console.log('ES signal generator status not available:', err.message);
     }
   };
 
@@ -197,7 +186,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       loadMarginSettings(),
       checkMicroserviceHealth(),
       fetchSignalGeneratorConnections(),
-      fetchESSignalGeneratorConnections(),
       fetchMacroBriefingHealth(),
       checkRelayStatus()
     ]).catch(error => console.error('Background loading error:', error));
@@ -205,7 +193,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     const healthCheckInterval = setInterval(() => {
       checkMicroserviceHealth();
       fetchSignalGeneratorConnections();
-      fetchESSignalGeneratorConnections();
       fetchMacroBriefingHealth();
     }, 60000);
 
@@ -442,36 +429,48 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     <div className="h-full overflow-y-auto p-4">
       <div className="bg-gray-800 rounded-lg p-6">
         <div className="mb-4">
-          {/* Trading toggle and action buttons */}
+          {/* Trading toggle, position sizing, and action buttons */}
           <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center space-x-2 flex-shrink-0">
-              <span className="text-sm text-gray-300">Trading:</span>
-              <button
-                onClick={handleKillSwitchToggle}
-                disabled={isKillSwitchLoading}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                  tradingEnabled ? 'bg-green-600' : 'bg-red-600'
-                }`}
-                role="switch"
-                aria-checked={tradingEnabled}
-                aria-label={`Trading is currently ${tradingEnabled ? 'enabled' : 'disabled'}`}
-              >
-                <span className="sr-only">Toggle trading</span>
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
-                    tradingEnabled ? 'translate-x-6' : 'translate-x-1'
+            <div className="flex items-center space-x-4 flex-shrink-0">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-300">Trading:</span>
+                <button
+                  onClick={handleKillSwitchToggle}
+                  disabled={isKillSwitchLoading}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                    tradingEnabled ? 'bg-green-600' : 'bg-red-600'
                   }`}
-                />
-              </button>
-              <span className={`text-xs font-medium ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                {isKillSwitchLoading ? '...' : tradingEnabled ? 'ON' : 'OFF'}
+                  role="switch"
+                  aria-checked={tradingEnabled}
+                  aria-label={`Trading is currently ${tradingEnabled ? 'enabled' : 'disabled'}`}
+                >
+                  <span className="sr-only">Toggle trading</span>
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+                      tradingEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs font-medium ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                  {isKillSwitchLoading ? '...' : tradingEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <span className="text-gray-600">|</span>
+              <span className="text-sm text-blue-400 font-medium">
+                {positionSizingSettings?.method === 'fixed'
+                  ? `${positionSizingSettings?.fixedQuantity || 1} ${
+                      positionSizingSettings?.contractType === 'full' ? 'Full' :
+                      positionSizingSettings?.contractType === 'micro' ? 'Micro' : ''
+                    } Contracts`
+                  : `${positionSizingSettings?.riskPercentage || 10}% Risk`
+                }
               </span>
+              <span className="text-gray-600">|</span>
+              <svg className={`w-4 h-4 ${socket?.isConnected ? 'text-green-400' : 'text-red-400'}`} fill="currentColor" viewBox="0 0 24 24" title={socket?.isConnected ? 'WebSocket connected' : 'WebSocket disconnected'}>
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
             </div>
-          </div>
-
-          {/* Second line: Margins, Position Sizing, and Full Sync buttons */}
-          <div className="flex justify-end">
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button onClick={() => setShowMarginModal(true)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-sm rounded transition-colors flex-shrink-0">
                 Margins
               </button>
@@ -495,43 +494,9 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="bg-gray-700 p-4 rounded">
-            <h4 className="font-semibold text-white mb-2">Trading Status</h4>
-            <p className={`text-sm font-bold ${tradingEnabled ? 'text-green-400' : 'text-red-400'}`}>
-              {tradingEnabled ? 'ENABLED' : 'DISABLED'}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {tradingEnabled ? 'Live trades active' : 'Kill switch active'}
-            </p>
-          </div>
-          <div className="bg-gray-700 p-4 rounded">
-            <h4 className="font-semibold text-white mb-2">Position Sizing</h4>
-            <p className="text-sm text-blue-400 font-semibold">
-              {positionSizingSettings?.method === 'fixed'
-                ? `${positionSizingSettings?.fixedQuantity || 1} ${
-                    positionSizingSettings?.contractType === 'full' ? 'Full' :
-                    positionSizingSettings?.contractType === 'micro' ? 'Micro' : ''
-                  } Contracts`
-                : `${positionSizingSettings?.riskPercentage || 10}% Risk`
-              }
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {positionSizingSettings?.method === 'fixed'
-                ? `Fixed quantity${positionSizingSettings?.contractType !== 'auto' ? ` (${positionSizingSettings?.contractType} override)` : ''}`
-                : 'Risk-based sizing'
-              }
-            </p>
-          </div>
-          <div className="bg-gray-700 p-4 rounded">
-            <h4 className="font-semibold text-white mb-2">WebSocket</h4>
-            <p className={`text-sm ${socket?.isConnected ? 'text-green-400' : 'text-red-400'}`}>
-              {socket?.isConnected ? 'Connected' : 'Disconnected'}
-            </p>
-          </div>
-
-          {/* Microservices Health Grid (excluding signal generators) */}
+          {/* Microservices Health Grid */}
           {Object.entries(microserviceHealth)
-            .filter(([serviceName]) => serviceName !== 'siggen-nq-ivskew' && serviceName !== 'siggen-es-cross' && serviceName !== 'macro-briefing')
+            .filter(([serviceName]) => serviceName !== 'data-service' && serviceName !== 'macro-briefing')
             .map(([serviceName, health]) => (
             <div key={serviceName} className="bg-gray-700 p-4 rounded relative">
               <h4 className="font-semibold text-white mb-2 capitalize">
@@ -566,20 +531,20 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
             </div>
           ))}
 
-          {/* Signal Generator - Enhanced Card with Connection Status */}
-          {microserviceHealth['siggen-nq-ivskew'] && (
+          {/* Data Service - Enhanced Card with Connection Status */}
+          {microserviceHealth['data-service'] && (
             <div className={`bg-gray-700 p-4 rounded relative ${sgConnectionsExpanded ? 'col-span-full' : ''}`}>
               <div className="flex justify-between items-start">
                 <div>
-                  <h4 className="font-semibold text-white mb-2">Signal Generator (NQ)</h4>
+                  <h4 className="font-semibold text-white mb-2">Data Service</h4>
                   <p className={`text-sm font-bold ${
-                    microserviceHealth['siggen-nq-ivskew'].status === 'healthy' ? 'text-green-400' :
-                    microserviceHealth['siggen-nq-ivskew'].status === 'unhealthy' ? 'text-red-400' :
-                    microserviceHealth['siggen-nq-ivskew'].status === 'restarting' ? 'text-yellow-400' : 'text-yellow-400'
+                    microserviceHealth['data-service'].status === 'healthy' ? 'text-green-400' :
+                    microserviceHealth['data-service'].status === 'unhealthy' ? 'text-red-400' :
+                    microserviceHealth['data-service'].status === 'restarting' ? 'text-yellow-400' : 'text-yellow-400'
                   }`}>
-                    {microserviceHealth['siggen-nq-ivskew'].status === 'healthy' ? 'Healthy' :
-                     microserviceHealth['siggen-nq-ivskew'].status === 'unhealthy' ? 'Down' :
-                     microserviceHealth['siggen-nq-ivskew'].status === 'restarting' ? 'Restarting' : 'Unknown'}
+                    {microserviceHealth['data-service'].status === 'healthy' ? 'Healthy' :
+                     microserviceHealth['data-service'].status === 'unhealthy' ? 'Down' :
+                     microserviceHealth['data-service'].status === 'restarting' ? 'Restarting' : 'Unknown'}
                     {signalGeneratorConnections?.overall && (
                       <span className={`ml-2 ${
                         signalGeneratorConnections.overall === 'healthy' ? 'text-green-400' :
@@ -605,15 +570,15 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                   )}
                   {process.env.REACT_APP_ENVIRONMENT === 'production' && (
                     <button
-                      onClick={() => handleServiceRestart('siggen-nq-ivskew')}
-                      disabled={microserviceHealth['siggen-nq-ivskew'].status === 'restarting'}
+                      onClick={() => handleServiceRestart('data-service')}
+                      disabled={microserviceHealth['data-service'].status === 'restarting'}
                       className={`px-2 py-1 text-xs rounded transition-colors ${
-                        microserviceHealth['siggen-nq-ivskew'].status === 'restarting'
+                        microserviceHealth['data-service'].status === 'restarting'
                           ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 text-white'
                       }`}
                     >
-                      {microserviceHealth['siggen-nq-ivskew'].status === 'restarting' ? '...' : 'Restart'}
+                      {microserviceHealth['data-service'].status === 'restarting' ? '...' : 'Restart'}
                     </button>
                   )}
                 </div>
@@ -801,199 +766,8 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
 
               {!sgConnectionsExpanded && (
                 <p className="text-xs text-gray-400 mt-1">
-                  {microserviceHealth['siggen-nq-ivskew'].lastChecked
-                    ? `Last check: ${microserviceHealth['siggen-nq-ivskew'].lastChecked.toLocaleTimeString()}`
-                    : 'Not checked'}
-                </p>
-              )}
-            </div>
-          )}
-          {/* ES Signal Generator - Enhanced Card with Connection Status */}
-          {microserviceHealth['siggen-es-cross'] && (
-            <div className={`bg-gray-700 p-4 rounded relative ${esConnectionsExpanded ? 'col-span-full' : ''}`}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-semibold text-white mb-2">Signal Generator (ES)</h4>
-                  <p className={`text-sm font-bold ${
-                    microserviceHealth['siggen-es-cross'].status === 'healthy' ? 'text-green-400' :
-                    microserviceHealth['siggen-es-cross'].status === 'unhealthy' ? 'text-red-400' :
-                    microserviceHealth['siggen-es-cross'].status === 'restarting' ? 'text-yellow-400' : 'text-yellow-400'
-                  }`}>
-                    {microserviceHealth['siggen-es-cross'].status === 'healthy' ? 'Healthy' :
-                     microserviceHealth['siggen-es-cross'].status === 'unhealthy' ? 'Down' :
-                     microserviceHealth['siggen-es-cross'].status === 'restarting' ? 'Restarting' : 'Unknown'}
-                    {esSignalGeneratorConnections?.overall && (
-                      <span className={`ml-2 ${
-                        esSignalGeneratorConnections.overall === 'healthy' ? 'text-green-400' :
-                        esSignalGeneratorConnections.overall === 'degraded' ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        ({esSignalGeneratorConnections.overall === 'healthy' ? 'All Connected' :
-                          esSignalGeneratorConnections.overall === 'degraded' ? 'Degraded' : 'Issues'})
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  {esSignalGeneratorConnections && (
-                    <button
-                      onClick={() => setEsConnectionsExpanded(!esConnectionsExpanded)}
-                      className="text-gray-400 hover:text-white transition-colors p-1"
-                      title={esConnectionsExpanded ? 'Collapse' : 'Expand connections'}
-                    >
-                      <svg className={`w-4 h-4 transition-transform ${esConnectionsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  )}
-                  {process.env.REACT_APP_ENVIRONMENT === 'production' && (
-                    <button
-                      onClick={() => handleServiceRestart('siggen-es-cross')}
-                      disabled={microserviceHealth['siggen-es-cross'].status === 'restarting'}
-                      className={`px-2 py-1 text-xs rounded transition-colors ${
-                        microserviceHealth['siggen-es-cross'].status === 'restarting'
-                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                    >
-                      {microserviceHealth['siggen-es-cross'].status === 'restarting' ? '...' : 'Restart'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Connection Badges */}
-              {esSignalGeneratorConnections?.connections && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    esSignalGeneratorConnections.connections.tradingview?.connected
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {esSignalGeneratorConnections.connections.tradingview?.connected ? '✓' : '✗'} TV
-                  </span>
-                  {!esSignalGeneratorConnections.connections.ltMonitor?.notRequired && (
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      esSignalGeneratorConnections.connections.ltMonitor?.connected
-                        ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                        : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                    }`}>
-                      {esSignalGeneratorConnections.connections.ltMonitor?.connected ? '✓' : '✗'} LT
-                    </span>
-                  )}
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'connected'
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed'
-                      ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? '✓' :
-                     esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Tradier
-                  </span>
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    esSignalGeneratorConnections.connections.cboe?.hasData
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {esSignalGeneratorConnections.connections.cboe?.hasData ? '✓' : '✗'} CBOE
-                  </span>
-                </div>
-              )}
-
-              {/* Expanded Connection Details */}
-              {esConnectionsExpanded && esSignalGeneratorConnections?.connections && (
-                <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
-                  {/* TradingView */}
-                  <div className="bg-gray-800/50 rounded p-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">TradingView WebSocket</span>
-                      <span className={`text-xs ${esSignalGeneratorConnections.connections.tradingview?.connected ? 'text-green-400' : 'text-red-400'}`}>
-                        {esSignalGeneratorConnections.connections.tradingview?.connected ? 'Connected' : 'Disconnected'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(esSignalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
-                      <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(esSignalGeneratorConnections.connections.tradingview?.lastHeartbeat)}</span></div>
-                      <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{esSignalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
-                      <div><span className="text-gray-400">Symbols:</span> <span className="text-white">{esSignalGeneratorConnections.connections.tradingview?.symbols?.length || 0}</span></div>
-                    </div>
-                  </div>
-
-                  {/* LT Monitor */}
-                  {!esSignalGeneratorConnections.connections.ltMonitor?.notRequired && (
-                    <div className="bg-gray-800/50 rounded p-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-white text-sm font-medium">LT Monitor WebSocket</span>
-                        <span className={`text-xs ${esSignalGeneratorConnections.connections.ltMonitor?.connected ? 'text-green-400' : 'text-red-400'}`}>
-                          {esSignalGeneratorConnections.connections.ltMonitor?.connected ? 'Connected' : 'Disconnected'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-1 text-xs">
-                        <div><span className="text-gray-400">Has Levels:</span> <span className="text-white">{esSignalGeneratorConnections.connections.ltMonitor?.hasLevels ? 'Yes' : 'No'}</span></div>
-                        <div><span className="text-gray-400">Heartbeat:</span> <span className="text-white">{formatAge(esSignalGeneratorConnections.connections.ltMonitor?.lastHeartbeat)}</span></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tradier */}
-                  <div className="bg-gray-800/50 rounded p-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">Tradier Options</span>
-                      <span className={`text-xs ${
-                        esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? 'text-green-400' :
-                        esSignalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {esSignalGeneratorConnections.connections.tradier?.displayStatus || 'Unknown'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Available:</span> <span className="text-white">{esSignalGeneratorConnections.connections.tradier?.available ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Running:</span> <span className="text-white">{esSignalGeneratorConnections.connections.tradier?.running ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{esSignalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(esSignalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
-                    </div>
-                  </div>
-
-                  {/* CBOE */}
-                  <div className="bg-gray-800/50 rounded p-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">CBOE API</span>
-                      <span className={`text-xs ${esSignalGeneratorConnections.connections.cboe?.hasData ? 'text-green-400' : 'text-red-400'}`}>
-                        {esSignalGeneratorConnections.connections.cboe?.hasData ? 'Has Data' : 'No Data'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Enabled:</span> <span className="text-white">{esSignalGeneratorConnections.connections.cboe?.enabled ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Data Age:</span> <span className="text-white">{esSignalGeneratorConnections.connections.cboe?.ageMinutes != null ? `${esSignalGeneratorConnections.connections.cboe.ageMinutes} min` : 'N/A'}</span></div>
-                      <div><span className="text-gray-400">Last Fetch:</span> <span className="text-white">{formatAge(esSignalGeneratorConnections.connections.cboe?.lastFetch)}</span></div>
-                    </div>
-                  </div>
-
-                  {/* Hybrid GEX */}
-                  {esSignalGeneratorConnections.connections.hybridGex?.enabled && (
-                    <div className="bg-gray-800/50 rounded p-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-white text-sm font-medium">Hybrid GEX</span>
-                        <span className="text-xs text-green-400">Enabled</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                        <div><span className="text-gray-400">Primary:</span> <span className="text-white">{esSignalGeneratorConnections.connections.hybridGex?.primarySource || 'N/A'}</span></div>
-                        <div><span className="text-gray-400">RTH Cache:</span> <span className="text-white">{esSignalGeneratorConnections.connections.hybridGex?.usingRTHCache ? 'Yes' : 'No'}</span></div>
-                        <div><span className="text-gray-400">Tradier Fresh:</span> <span className="text-white">{esSignalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-xs text-gray-500 text-right">
-                    Updated: {esSignalGeneratorConnections.timestamp ? formatAge(esSignalGeneratorConnections.timestamp) : 'Never'}
-                  </div>
-                </div>
-              )}
-
-              {!esConnectionsExpanded && (
-                <p className="text-xs text-gray-400 mt-1">
-                  {microserviceHealth['siggen-es-cross'].lastChecked
-                    ? `Last check: ${microserviceHealth['siggen-es-cross'].lastChecked.toLocaleTimeString()}`
+                  {microserviceHealth['data-service'].lastChecked
+                    ? `Last check: ${microserviceHealth['data-service'].lastChecked.toLocaleTimeString()}`
                     : 'Not checked'}
                 </p>
               )}
@@ -1045,7 +819,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
         {/* Health Controls */}
         <div className="mt-4 flex space-x-2">
           <button
-            onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); fetchESSignalGeneratorConnections(); fetchMacroBriefingHealth(); }}
+            onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); fetchMacroBriefingHealth(); }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
           >
             Refresh Health

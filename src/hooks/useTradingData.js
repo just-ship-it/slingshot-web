@@ -18,6 +18,8 @@ export const useTradingData = (socket, onChangeEvent) => {
   // Track previous IDs to detect structural changes
   const prevPositionIdsRef = useRef(null);
   const prevOrderIdsRef = useRef(null);
+  const prevOrdersMapRef = useRef(new Map());
+  const cancelledOrderIdsRef = useRef(new Set());
   const onChangeEventRef = useRef(onChangeEvent);
   useEffect(() => { onChangeEventRef.current = onChangeEvent; }, [onChangeEvent]);
 
@@ -73,10 +75,18 @@ export const useTradingData = (socket, onChangeEvent) => {
       }
       for (const id of prevSet) {
         if (!curSet.has(id)) {
-          onChangeEventRef.current?.({ type: 'order_filled', data: { id } });
+          const prevOrder = prevOrdersMapRef.current.get(id) || { id };
+          const wasCancelled = cancelledOrderIdsRef.current.has(id);
+          if (wasCancelled) cancelledOrderIdsRef.current.delete(id);
+          onChangeEventRef.current?.({ type: wasCancelled ? 'order_cancelled' : 'order_filled', data: prevOrder });
         }
       }
     }
+
+    // Save current orders for next diff
+    const newMap = new Map();
+    (tradingData.pendingOrders || []).forEach(o => { if (o.orderId) newMap.set(String(o.orderId), o); });
+    prevOrdersMapRef.current = newMap;
 
     prevPositionIdsRef.current = posIds;
     prevOrderIdsRef.current = ordIds;
@@ -143,12 +153,19 @@ export const useTradingData = (socket, onChangeEvent) => {
     // Structural changes — full reload
     const handleStructuralChange = () => reload();
 
+    // Track cancelled order IDs so diff logic can distinguish cancel vs fill
+    const handleOrderCancelled = (data) => {
+      if (data?.orderId) cancelledOrderIdsRef.current.add(String(data.orderId));
+      reload();
+    };
+
     socket.socket.on('position_realtime_update', handlePositionRealtimeUpdate);
     socket.socket.on('order_realtime_update', handleOrderRealtimeUpdate);
     socket.socket.on('position_update', handleStructuralChange);
     socket.socket.on('position_closed', handleStructuralChange);
     socket.socket.on('order_placed', handleStructuralChange);
     socket.socket.on('order_update', handleStructuralChange);
+    socket.socket.on('order_cancelled', handleOrderCancelled);
 
     return () => {
       socket.socket.off('position_realtime_update', handlePositionRealtimeUpdate);
@@ -157,6 +174,7 @@ export const useTradingData = (socket, onChangeEvent) => {
       socket.socket.off('position_closed', handleStructuralChange);
       socket.socket.off('order_placed', handleStructuralChange);
       socket.socket.off('order_update', handleStructuralChange);
+      socket.socket.off('order_cancelled', handleOrderCancelled);
     };
   }, [socket, reload]);
 
