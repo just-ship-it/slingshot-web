@@ -226,6 +226,13 @@ const AITraderPanel = () => {
               </div>
               <span className="text-[11px] text-gray-500">{lastEval.time}</span>
             </div>
+            {lastEval.action === 'enter' && lastEval.entry_price && (
+              <div className="flex gap-2 text-[12px] font-mono mb-0.5">
+                <span className="text-white">Entry: {lastEval.entry_price?.toFixed(2)}</span>
+                <span className="text-red-400">Stop: {lastEval.stop_loss?.toFixed(2)}</span>
+                <span className="text-green-400">Target: {lastEval.take_profit?.toFixed(2)}</span>
+              </div>
+            )}
             {lastEval.reasoning && (
               <div className="text-[12px] text-gray-300 leading-tight max-h-[45px] overflow-y-auto scrollbar-thin mb-0.5">
                 {lastEval.reasoning}
