@@ -440,6 +440,11 @@ export const api = {
     }
   },
 
+  // AI Trader bias reassessment - trigger on-demand reassessment
+  async triggerBiasReassessment() {
+    return await apiClient.post('/api/strategy/ai-trader/reassess-bias');
+  },
+
   // IV Skew data from siggen-nq-ivskew
   async getIVSkew() {
     try {

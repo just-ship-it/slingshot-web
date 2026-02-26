@@ -44,6 +44,7 @@ const ConvictionDots = ({ conviction, direction, max = 5 }) => {
 const AITraderPanel = () => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reassessing, setReassessing] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -53,6 +54,18 @@ const AITraderPanel = () => {
       // silent
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReassessBias = async () => {
+    setReassessing(true);
+    try {
+      await api.triggerBiasReassessment();
+      await fetchStatus();
+    } catch (err) {
+      console.error('Bias reassessment failed:', err);
+    } finally {
+      setReassessing(false);
     }
   };
 
@@ -142,9 +155,18 @@ const AITraderPanel = () => {
                 </span>
                 <ConvictionDots conviction={bias.conviction} direction={bias.direction} />
               </div>
-              {latestBiasEntry && (
-                <span className="text-[11px] text-gray-400">{capitalize(latestBiasEntry.source?.replace('-', ' '))}</span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {latestBiasEntry && (
+                  <span className="text-[11px] text-gray-400">{capitalize(latestBiasEntry.source?.replace('-', ' '))}</span>
+                )}
+                <button
+                  onClick={handleReassessBias}
+                  disabled={reassessing}
+                  className="text-[10px] bg-gray-600 hover:bg-gray-500 text-gray-300 px-1.5 py-0.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {reassessing ? 'Reassessing...' : 'Reassess'}
+                </button>
+              </div>
             </div>
             {bias.reasoning && (
               <div className="text-[12px] text-gray-300 leading-tight max-h-[60px] overflow-y-auto scrollbar-thin">
@@ -154,7 +176,16 @@ const AITraderPanel = () => {
           </div>
         ) : (
           <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-            <div className="text-[15px] text-gray-400">Awaiting bias formation</div>
+            <div className="flex justify-between items-center">
+              <div className="text-[15px] text-gray-400">Awaiting bias formation</div>
+              <button
+                onClick={handleReassessBias}
+                disabled={reassessing}
+                className="text-[10px] bg-gray-600 hover:bg-gray-500 text-gray-300 px-1.5 py-0.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {reassessing ? 'Forming...' : 'Form Bias'}
+              </button>
+            </div>
             <div className="text-[12px] text-gray-500">Bias forms at 9:25 AM ET</div>
           </div>
         )}
