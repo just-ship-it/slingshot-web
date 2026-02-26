@@ -27,9 +27,18 @@ function App() {
   const [accountSummary, setAccountSummary] = useState(null);
 
   // Trading panel + toast state
-  const [tradingPanelOpen, setTradingPanelOpen] = useState(false);
+  const [tradingPanelOpen, setTradingPanelOpen] = useState(() => {
+    try { return localStorage.getItem('slingshot_trading_panel_open') === 'true'; }
+    catch { return false; }
+  });
   const [toasts, setToasts] = useState([]);
   const [posFlashKey, setPosFlashKey] = useState(0);
+
+  // Persist trading panel open/closed state
+  useEffect(() => {
+    try { localStorage.setItem('slingshot_trading_panel_open', tradingPanelOpen); }
+    catch { /* ignore */ }
+  }, [tradingPanelOpen]);
 
   // Tradovate status (shared between Dashboard and PlatformStatus)
   const [tradovateStatus, setTradovateStatus] = useState('disabled');

@@ -130,7 +130,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
 
   if (loading && !cboeData && !tradierData) {
     return (
-      <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
+      <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-b-lg p-2">
         <h3 className="text-xs font-bold text-white mb-2">GEX Levels</h3>
         <div className="text-gray-300 text-[13px]">Loading GEX levels...</div>
       </div>
@@ -138,7 +138,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-b-lg p-2">
       {/* Header */}
       <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
         <h3 className="text-xs font-bold text-white">GEX Levels</h3>

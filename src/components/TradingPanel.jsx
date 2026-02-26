@@ -206,7 +206,7 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
     return (
       <button
         onClick={onToggle}
-        className="trading-panel-handle bg-gray-800 border-l border-gray-700 flex flex-col items-center justify-center gap-2 hover:bg-gray-700 cursor-pointer"
+        className="trading-panel-handle bg-gray-800 border-l border-gray-700 rounded-l-lg flex flex-col items-center justify-center gap-2 hover:bg-gray-700 cursor-pointer"
         title="Open trading panel"
       >
         <span className={`w-2.5 h-2.5 rounded-full ${getHandleDotColor(tradingData)}`} />
@@ -219,7 +219,7 @@ const TradingPanel = ({ open, onToggle, tradingData, isLoading, quotes }) => {
 
   // Open: fills its grid cell naturally
   return (
-    <div className="trading-panel bg-gray-800 border-l border-gray-700 flex flex-col">
+    <div className="trading-panel bg-gray-800 border-l border-gray-700 rounded-lg flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center gap-2 text-sm">
