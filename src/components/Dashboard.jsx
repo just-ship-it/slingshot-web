@@ -191,7 +191,7 @@ const Dashboard = ({
         if (data.close != null) incoming.close = data.close;
         if (data.volume != null) incoming.volume = data.volume;
         if (data.timestamp != null) incoming.timestamp = data.timestamp;
-        if (data.candleTimestamp != null) incoming.candleTimestamp = data.candleTimestamp;
+        incoming.candleTimestamp = data.candleTimestamp ?? null;
         if (data.open != null) incoming.open = data.open;
         if (data.high != null) incoming.high = data.high;
         if (data.low != null) incoming.low = data.low;

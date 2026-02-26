@@ -236,6 +236,8 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   // Update candlestick data with real-time OHLC
   useEffect(() => {
     if (!seriesRef.current || !quote?.close || !chartReady) return;
+    // Only update candle chart from TradingView chart-session (du) data, not quote-session (qsd)
+    if (!quote.candleTimestamp) return;
     const timestamp = quote.timestamp ? new Date(quote.timestamp).getTime() / 1000 : Math.floor(Date.now() / 1000);
     const candleTime = Math.floor(timestamp / 60) * 60;
     const hasCandelOHLCV = !!quote.candleTimestamp;
