@@ -29,6 +29,11 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [macroBriefingHealth, setMacroBriefingHealth] = useState(null);
   const [isBriefingGenerating, setIsBriefingGenerating] = useState(false);
 
+  // Strategies
+  const [strategies, setStrategies] = useState([]);
+  const [strategiesExpanded, setStrategiesExpanded] = useState(false);
+  const [strategyToggleLoading, setStrategyToggleLoading] = useState(null);
+
   // Relay (values maintained via WebSocket handlers for internal tracking)
   const [, setRelayStatus] = useState({ isRunning: false, connectionUrl: null, lastError: null, uptime: 0 });
   const [, setRelayLogs] = useState([]);
@@ -118,6 +123,31 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     }
   };
 
+  const fetchStrategies = async () => {
+    try {
+      const data = await api.getStrategiesList();
+      if (data?.strategies) setStrategies(data.strategies);
+    } catch (err) {
+      console.log('Strategies not available:', err.message);
+    }
+  };
+
+  const handleStrategyToggle = async (strategyConstant, currentEnabled) => {
+    setStrategyToggleLoading(strategyConstant);
+    try {
+      if (currentEnabled) {
+        await api.disableStrategy(strategyConstant);
+      } else {
+        await api.enableStrategy(strategyConstant);
+      }
+      await fetchStrategies();
+    } catch (err) {
+      console.error('Failed to toggle strategy:', err.message);
+    } finally {
+      setStrategyToggleLoading(null);
+    }
+  };
+
   const handleGenerateBriefing = async () => {
     setIsBriefingGenerating(true);
     try {
@@ -187,6 +217,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       checkMicroserviceHealth(),
       fetchSignalGeneratorConnections(),
       fetchMacroBriefingHealth(),
+      fetchStrategies(),
       checkRelayStatus()
     ]).catch(error => console.error('Background loading error:', error));
 
@@ -194,6 +225,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       checkMicroserviceHealth();
       fetchSignalGeneratorConnections();
       fetchMacroBriefingHealth();
+      fetchStrategies();
     }, 60000);
 
     return () => clearInterval(healthCheckInterval);
@@ -267,6 +299,10 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       setRelayLogs(formatted.slice(0, 100));
     };
 
+    const handleStrategyStatusUpdate = () => {
+      fetchStrategies();
+    };
+
     const handleInitialState = (data) => {
       if (data.services && Array.isArray(data.services)) {
         const healthState = {};
@@ -305,6 +341,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     socket.socket.on('initial_activity', handleInitialActivity);
     socket.socket.on('filtered_activity', handleFilteredActivity);
     socket.socket.on('initial_state', handleInitialState);
+    socket.socket.on('strategyStatus', handleStrategyStatusUpdate);
 
     return () => {
       socket.socket.off('relay_status_change', handleRelayStatusChange);
@@ -324,6 +361,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       socket.socket.off('initial_activity', handleInitialActivity);
       socket.socket.off('filtered_activity', handleFilteredActivity);
       socket.socket.off('initial_state', handleInitialState);
+      socket.socket.off('strategyStatus', handleStrategyStatusUpdate);
     };
   }, [socket]);
 
@@ -496,7 +534,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Microservices Health Grid */}
           {Object.entries(microserviceHealth)
-            .filter(([serviceName]) => serviceName !== 'data-service' && serviceName !== 'macro-briefing')
+            .filter(([serviceName]) => serviceName !== 'data-service' && serviceName !== 'macro-briefing' && serviceName !== 'signal-generator')
             .map(([serviceName, health]) => (
             <div key={serviceName} className="bg-gray-700 p-4 rounded relative">
               <h4 className="font-semibold text-white mb-2 capitalize">
@@ -774,6 +812,136 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
             </div>
           )}
 
+          {/* Signal Generator - Enhanced Card with Strategy Controls */}
+          {microserviceHealth['signal-generator'] && (
+            <div className={`bg-gray-700 p-4 rounded relative ${strategiesExpanded ? 'col-span-full' : ''}`}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-semibold text-white mb-2">Signal Generator</h4>
+                  <p className={`text-sm font-bold ${
+                    microserviceHealth['signal-generator'].status === 'healthy' ? 'text-green-400' :
+                    microserviceHealth['signal-generator'].status === 'unhealthy' ? 'text-red-400' :
+                    'text-yellow-400'
+                  }`}>
+                    {microserviceHealth['signal-generator'].status === 'healthy' ? 'Healthy' :
+                     microserviceHealth['signal-generator'].status === 'unhealthy' ? 'Down' : 'Unknown'}
+                    {strategies.length > 0 && (
+                      <span className="ml-2 text-gray-400 font-normal">
+                        ({strategies.filter(s => s.enabled).length}/{strategies.length} active)
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {strategies.length > 0 && (
+                    <button
+                      onClick={() => setStrategiesExpanded(!strategiesExpanded)}
+                      className="text-gray-400 hover:text-white transition-colors p-1"
+                      title={strategiesExpanded ? 'Collapse' : 'Expand strategies'}
+                    >
+                      <svg className={`w-4 h-4 transition-transform ${strategiesExpanded ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  )}
+                  {process.env.REACT_APP_ENVIRONMENT === 'production' && (
+                    <button onClick={() => handleServiceRestart('signal-generator')}
+                      disabled={microserviceHealth['signal-generator'].status === 'restarting'}
+                      className={`px-2 py-1 text-xs rounded transition-colors ${
+                        microserviceHealth['signal-generator'].status === 'restarting'
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}>
+                      {microserviceHealth['signal-generator'].status === 'restarting' ? '...' : 'Restart'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Strategy Badges (collapsed view) */}
+              {strategies.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {strategies.map(s => (
+                    <span key={`${s.product}-${s.name}`} className={`px-2 py-0.5 rounded text-xs ${
+                      s.enabled && s.data_ready && s.evaluation_readiness?.ready
+                        ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                        : s.enabled && s.data_ready
+                        ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
+                        : s.enabled
+                        ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
+                        : 'bg-gray-800/50 text-gray-400 border border-gray-600/50'
+                    }`}>
+                      {s.enabled ? (s.evaluation_readiness?.ready ? '\u2713' : '\u23F3') : '\u2717'} {s.name}
+                      {s.product !== 'NQ' ? ` (${s.product})` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Expanded Strategy Details */}
+              {strategiesExpanded && strategies.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
+                  {strategies.map(s => (
+                    <div key={`${s.product}-${s.name}`} className="bg-gray-800/50 rounded p-2">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white text-sm font-medium">{s.name}</span>
+                          <span className="text-xs text-gray-400">{s.product}</span>
+                          {s.position?.in_position && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50">
+                              IN POSITION
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${s.data_ready ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {s.data_ready ? 'Data Ready' : 'Waiting...'}
+                          </span>
+                          <button
+                            onClick={() => handleStrategyToggle(s.constant, s.enabled)}
+                            disabled={strategyToggleLoading === s.constant}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              strategyToggleLoading === s.constant ? 'opacity-50 cursor-not-allowed' :
+                              s.enabled ? 'bg-green-600' : 'bg-gray-600'
+                            }`}
+                          >
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                              s.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                            }`} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
+                        <div><span className="text-gray-400">Session:</span> <span className={
+                          s.session?.in_session ? 'text-green-400' : 'text-gray-400'
+                        }>{s.session?.in_session ? 'Active' : 'Inactive'}</span></div>
+                        <div><span className="text-gray-400">Cooldown:</span> <span className={
+                          s.cooldown?.in_cooldown ? 'text-yellow-400' : 'text-green-400'
+                        }>{s.cooldown?.formatted}</span></div>
+                        <div><span className="text-gray-400">Timeframe:</span> <span className="text-white">{s.eval_timeframe}</span></div>
+                        <div><span className="text-gray-400">Symbol:</span> <span className="text-white">{s.trading_symbol}</span></div>
+                      </div>
+                      {s.evaluation_readiness?.blockers?.length > 0 && (
+                        <div className="mt-1 text-xs text-red-400">
+                          Blockers: {s.evaluation_readiness.blockers.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!strategiesExpanded && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {microserviceHealth['signal-generator'].lastChecked
+                    ? `Last check: ${microserviceHealth['signal-generator'].lastChecked.toLocaleTimeString()}`
+                    : 'Not checked'}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Macro Briefing - Enhanced Card */}
           {microserviceHealth['macro-briefing'] && (
             <div className="bg-gray-700 p-4 rounded relative">
@@ -819,7 +987,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
         {/* Health Controls */}
         <div className="mt-4 flex space-x-2">
           <button
-            onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); fetchMacroBriefingHealth(); }}
+            onClick={() => { checkMicroserviceHealth(); fetchSignalGeneratorConnections(); fetchMacroBriefingHealth(); fetchStrategies(); }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded transition-colors"
           >
             Refresh Health

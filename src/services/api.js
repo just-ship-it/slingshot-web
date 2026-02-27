@@ -430,6 +430,26 @@ export const api = {
     }
   },
 
+  // List all strategies from multi-strategy engine
+  async getStrategiesList() {
+    try {
+      return await apiClient.get('/api/strategies');
+    } catch (error) {
+      console.log('Strategies list not available:', error.message);
+      return null;
+    }
+  },
+
+  // Enable a specific strategy (or all if no name provided)
+  async enableStrategy(strategyName) {
+    return await apiClient.post('/api/strategy/enable', { strategy: strategyName });
+  },
+
+  // Disable a specific strategy (or all if no name provided)
+  async disableStrategy(strategyName) {
+    return await apiClient.post('/api/strategy/disable', { strategy: strategyName });
+  },
+
   // AI Trader status from siggen-nq-aitrader
   async getAITraderStatus() {
     try {
