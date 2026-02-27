@@ -157,7 +157,7 @@ const AITraderPanel = () => {
               </div>
               <div className="flex items-center gap-1.5">
                 {latestBiasEntry && (
-                  <span className="text-[11px] text-gray-400">{capitalize(latestBiasEntry.source?.replace('-', ' '))}</span>
+                  <span className="text-[11px] text-gray-400">{latestBiasEntry.time} · {capitalize(latestBiasEntry.source?.replace('-', ' '))}</span>
                 )}
                 <button
                   onClick={handleReassessBias}
