@@ -430,6 +430,16 @@ export const api = {
     }
   },
 
+  // MNQ Adaptive Scalper strategy status from multi-strategy engine
+  async getMnqScalperStatus() {
+    try {
+      return await apiClient.get('/api/strategy/mnq-adaptive-scalper/status');
+    } catch (error) {
+      console.log('MNQ scalper status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {

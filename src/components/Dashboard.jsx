@@ -7,6 +7,7 @@ import ESGexLevelsPanel from './ESGexLevelsPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
 import AITraderPanel from './AITraderPanel';
+import MnqScalperPanel from './MnqScalperPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({
@@ -310,6 +311,9 @@ const Dashboard = ({
         </div>
         <div className="panel-ai-trader">
           <AITraderPanel />
+        </div>
+        <div className="panel-mnq-scalper">
+          <MnqScalperPanel socket={socket} quotes={quotes} />
         </div>
       </div>
       {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}
