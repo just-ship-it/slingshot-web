@@ -430,12 +430,12 @@ export const api = {
     }
   },
 
-  // MNQ Adaptive Scalper strategy status from multi-strategy engine
-  async getMnqScalperStatus() {
+  // Impulse FVG strategy status from multi-strategy engine
+  async getImpulseFvgStatus() {
     try {
-      return await apiClient.get('/api/strategy/mnq-adaptive-scalper/status');
+      return await apiClient.get('/api/strategy/impulse-fvg/status');
     } catch (error) {
-      console.log('MNQ scalper status not available:', error.message);
+      console.log('Impulse FVG status not available:', error.message);
       return null;
     }
   },
