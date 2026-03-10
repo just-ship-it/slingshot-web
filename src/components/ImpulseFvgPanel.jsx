@@ -75,6 +75,32 @@ const ImpulseFvgPanel = ({ socket, quotes }) => {
   const mode = internals?.mode || 'no-fvg-fade';
   const signalCount = internals?.signalCount || 0;
 
+  // Event window labels and active window detection
+  const eventWindowLabels = [
+    { start: 8 * 60 + 25, end: 8 * 60 + 40, label: 'Economic Data' },
+    { start: 9 * 60 + 28, end: 9 * 60 + 37, label: 'Market Open' },
+    { start: 9 * 60 + 58, end: 10 * 60 + 7, label: '10am Data' },
+    { start: 13 * 60 + 58, end: 14 * 60 + 15, label: 'FOMC' },
+    { start: 14 * 60 + 28, end: 14 * 60 + 42, label: 'FOMC Press' },
+  ];
+
+  const getActiveEventWindow = () => {
+    if (!eventWindow.in_window) return null;
+    const now = new Date();
+    const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false });
+    const [h, m] = etStr.split(':').map(Number);
+    const etMinutes = h * 60 + m;
+    for (const w of eventWindowLabels) {
+      if (etMinutes >= w.start && etMinutes <= w.end) {
+        const remainMin = Math.floor((w.end - etMinutes));
+        const remainSec = 60 - now.getSeconds();
+        return { ...w, remainMin, remainSec: remainSec % 60 };
+      }
+    }
+    return null;
+  };
+  const activeWindow = getActiveEventWindow();
+
   // Status badge
   const getStatusBadge = () => {
     if (!status?.enabled) return { color: 'bg-gray-600', text: 'DISABLED' };
@@ -115,6 +141,23 @@ const ImpulseFvgPanel = ({ socket, quotes }) => {
             </div>
           )}
         </div>
+
+        {/* Active Event Window */}
+        {activeWindow && (
+          <div className="bg-yellow-900/30 border border-yellow-600/50 rounded p-1.5 mb-1.5 flex-shrink-0">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-yellow-400 font-medium">
+                Event Window: {activeWindow.label}
+              </span>
+              <span className="text-yellow-300 font-mono">
+                ~{activeWindow.remainMin}m {activeWindow.remainSec}s
+              </span>
+            </div>
+            <div className="text-[12px] text-yellow-600 mt-0.5">
+              {Math.floor(activeWindow.start / 60)}:{String(activeWindow.start % 60).padStart(2, '0')} - {Math.floor(activeWindow.end / 60)}:{String(activeWindow.end % 60).padStart(2, '0')} ET &middot; Impulses ignored
+            </div>
+          </div>
+        )}
 
         {/* Last Impulse Detected */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5 flex-shrink-0">
