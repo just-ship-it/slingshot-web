@@ -45,6 +45,7 @@ const AITraderPanel = () => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reassessing, setReassessing] = useState(false);
+  const [togglingObservation, setTogglingObservation] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -66,6 +67,19 @@ const AITraderPanel = () => {
       console.error('Bias reassessment failed:', err);
     } finally {
       setReassessing(false);
+    }
+  };
+
+  const handleToggleObservationMode = async () => {
+    const currentMode = status?.strategy?.observationMode || false;
+    setTogglingObservation(true);
+    try {
+      await api.setAITraderObservationMode(!currentMode);
+      await fetchStatus();
+    } catch (err) {
+      console.error('Observation mode toggle failed:', err);
+    } finally {
+      setTogglingObservation(false);
     }
   };
 
@@ -141,6 +155,21 @@ const AITraderPanel = () => {
             ? <span className="text-[10px] bg-green-800 text-green-300 px-1 rounded">ON</span>
             : <span className="text-[10px] bg-red-800 text-red-300 px-1 rounded">OFF</span>
           }
+          <button
+            onClick={handleToggleObservationMode}
+            disabled={togglingObservation}
+            title={strategy?.observationMode
+              ? 'Observation mode ON — AI runs but will NOT place trades. Click to allow trading.'
+              : 'Trading mode — AI will place live trades. Click to switch to observation-only.'
+            }
+            className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors disabled:opacity-50 ${
+              strategy?.observationMode
+                ? 'bg-orange-700 text-orange-200 hover:bg-orange-600'
+                : 'bg-blue-800 text-blue-300 hover:bg-blue-700'
+            }`}
+          >
+            {togglingObservation ? '...' : strategy?.observationMode ? 'OBS' : 'LIVE'}
+          </button>
         </div>
       </div>
 

@@ -475,6 +475,11 @@ export const api = {
     return await apiClient.post('/api/strategy/ai-trader/reassess-bias');
   },
 
+  // AI Trader observation mode toggle
+  async setAITraderObservationMode(enabled) {
+    return await apiClient.post('/api/strategy/ai-trader/observation-mode', { enabled });
+  },
+
   // IV Skew data from siggen-nq-ivskew
   async getIVSkew() {
     try {
