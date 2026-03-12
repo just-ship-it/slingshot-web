@@ -9,6 +9,7 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const [error, setError] = useState(null);
   const [candleCountdown, setCandleCountdown] = useState(0);
   const [strategyBlockers, setStrategyBlockers] = useState([]);
+  const [cooldownData, setCooldownData] = useState(null);
 
   // Update candle countdown every second
   useEffect(() => {
@@ -66,7 +67,7 @@ const IVSkewPanel = ({ socket, quotes }) => {
     }
   };
 
-  // Fetch strategy status for blockers
+  // Fetch strategy status for blockers and cooldown
   const fetchStrategyStatus = async () => {
     try {
       const response = await api.getIVSkewGexStatus();
@@ -75,10 +76,25 @@ const IVSkewPanel = ({ socket, quotes }) => {
       } else {
         setStrategyBlockers([]);
       }
+      if (response?.cooldown) {
+        setCooldownData(response.cooldown);
+      }
     } catch (err) {
       // silent
     }
   };
+
+  // Local cooldown countdown — tick every second between API polls
+  useEffect(() => {
+    if (!cooldownData?.in_cooldown || cooldownData.seconds_remaining <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownData(prev => {
+        if (!prev || prev.seconds_remaining <= 1) return { ...prev, in_cooldown: false, seconds_remaining: 0 };
+        return { ...prev, seconds_remaining: prev.seconds_remaining - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownData?.in_cooldown, cooldownData?.seconds_remaining > 0]);
 
   // Initial fetch and polling
   useEffect(() => {
@@ -314,9 +330,10 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const supportNear = gexProximity?.support?.distance <= LEVEL_PROXIMITY;
   const resistanceNear = gexProximity?.resistance?.distance <= LEVEL_PROXIMITY;
 
-  // Overall signal readiness
-  const longReady = ivOk && skewLongOk && supportNear;
-  const shortReady = ivOk && skewShortOk && resistanceNear;
+  // Overall signal readiness (suppressed during cooldown)
+  const inCooldown = cooldownData?.in_cooldown;
+  const longReady = ivOk && skewLongOk && supportNear && !inCooldown;
+  const shortReady = ivOk && skewShortOk && resistanceNear && !inCooldown;
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
@@ -411,6 +428,14 @@ const IVSkewPanel = ({ socket, quotes }) => {
               </span>
             </div>
             <div className="space-y-0.5 text-[15px]">
+              {inCooldown && (
+                <div className="flex items-center justify-between bg-yellow-900/30 border border-yellow-600/50 rounded px-1.5 py-0.5 mb-0.5">
+                  <span className="text-yellow-400 font-semibold">COOLDOWN</span>
+                  <span className="text-yellow-400 font-mono font-bold">
+                    {Math.floor(cooldownData.seconds_remaining / 60)}:{String(cooldownData.seconds_remaining % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center">
                 <span className="text-cyan-400 font-semibold w-16 flex-shrink-0">LONG</span>
                 <span className={`flex-1 ${skewLongOk ? 'text-green-400' : 'text-gray-300'}`}>{skewLongOk ? '✓' : '○'} Skew</span>
