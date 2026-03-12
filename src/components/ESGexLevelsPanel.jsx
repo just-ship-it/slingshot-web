@@ -190,7 +190,7 @@ const ESGexLevelsPanel = ({ gexData, onRefresh }) => {
                 <tr className="bg-gray-700">
                   <th className="text-left text-gray-300 font-medium px-1.5 py-0.5">Level</th>
                   <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">CBOE</th>
-                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">Tradier</th>
+                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">Schwab</th>
                 </tr>
               </thead>
               <tbody>

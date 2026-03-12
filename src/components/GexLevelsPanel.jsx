@@ -87,10 +87,10 @@ const GexLevelsPanel = () => {
     return values.join(',');
   };
 
-  // Format combined CBOE and Tradier data for TradingView (new dual source format)
+  // Format combined CBOE and Schwab data for TradingView (new dual source format)
   const formatCombinedForTradingView = async () => {
     try {
-      // Fetch both CBOE and Tradier data
+      // Fetch both CBOE and Schwab data
       const [cboeData, tradierData] = await Promise.all([
         api.getGexLevels(),
         api.getTradierGexLevels()
@@ -114,7 +114,7 @@ const GexLevelsPanel = () => {
         cboe.support?.[4] || 0
       ];
 
-      // Extract Tradier levels (using consistent naming)
+      // Extract Schwab levels (using consistent naming)
       const tradierValues = [
         tradierData?.gammaFlip || 0,
         tradierData?.callWall || 0,
@@ -131,7 +131,7 @@ const GexLevelsPanel = () => {
         tradierData?.support?.[4] || 0
       ];
 
-      // Combine: CBOE first (0-12), then Tradier (13-25)
+      // Combine: CBOE first (0-12), then Schwab (13-25)
       return [...cboeValues, ...tradierValues].join(',');
     } catch (error) {
       console.error('Failed to fetch combined GEX data:', error);
@@ -302,7 +302,7 @@ const GexLevelsPanel = () => {
 
           {/* Copy to clipboard buttons */}
           <div className="grid grid-cols-1 gap-2">
-            {/* Combined format (CBOE + Tradier) */}
+            {/* Combined format (CBOE + Schwab) */}
             <button
               onClick={handleCopyCombinedToClipboard}
               className={`w-full py-2 px-3 rounded text-sm font-medium transition-colors ${
@@ -323,7 +323,7 @@ const GexLevelsPanel = () => {
                   <svg className="inline-block w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  📊 Combined (CBOE + Tradier)
+                  Combined (CBOE + Schwab)
                 </>
               )}
             </button>
