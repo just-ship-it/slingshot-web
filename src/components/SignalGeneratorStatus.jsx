@@ -171,7 +171,7 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
           detail={status?.connections?.ltMonitor?.hasLevels ? 'Has Levels' : 'No Levels'}
         />
         <ConnectionBadge
-          label="Tradier"
+          label="Schwab"
           connected={status?.connections?.tradier?.websocketStatus === 'connected'}
           marketClosed={status?.connections?.tradier?.websocketStatus === 'market_closed'}
           detail={status?.connections?.tradier?.displayStatus || 'Unknown'}
@@ -254,10 +254,10 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
             ]}
           />
 
-          {/* Tradier Details */}
+          {/* Schwab Details */}
           <ConnectionDetailRow
-            icon="TR"
-            label="Tradier Options"
+            icon="SC"
+            label="Schwab Options"
             status={status?.connections?.tradier?.websocketStatus === 'connected'}
             statusLabel={status?.connections?.tradier?.displayStatus}
             marketClosed={status?.connections?.tradier?.websocketStatus === 'market_closed'}
@@ -291,7 +291,7 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
               { label: 'Enabled', value: status?.connections?.hybridGex?.enabled ? 'Yes' : 'No' },
               { label: 'Primary Source', value: status?.connections?.hybridGex?.primarySource || 'N/A' },
               { label: 'RTH Cache', value: status?.connections?.hybridGex?.usingRTHCache ? 'Yes' : 'No' },
-              { label: 'Tradier Fresh', value: status?.connections?.hybridGex?.tradierFresh ? 'Yes' : 'No' }
+              { label: 'Schwab Fresh', value: status?.connections?.hybridGex?.tradierFresh ? 'Yes' : 'No' }
             ]}
           />
         </div>
