@@ -9,7 +9,7 @@ const TradierGexLevelsPanel = () => {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch Tradier GEX levels
+  // Fetch Schwab GEX levels
   const fetchTradierLevels = async () => {
     try {
       setLoading(true);
@@ -21,17 +21,17 @@ const TradierGexLevelsPanel = () => {
         setLastRefresh(new Date());
       } else if (data) {
         // Handle case where data exists but no levels
-        setError('No Tradier GEX levels available');
+        setError('No Schwab GEX levels available');
       }
     } catch (err) {
-      setError('Failed to fetch Tradier GEX levels');
-      console.error('Error fetching Tradier GEX levels:', err);
+      setError('Failed to fetch Schwab GEX levels');
+      console.error('Error fetching Schwab GEX levels:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Force recalculation of Tradier GEX levels
+  // Force recalculation of Schwab GEX levels
   const handleRefreshTradierLevels = async () => {
     try {
       setRefreshing(true);
@@ -43,8 +43,8 @@ const TradierGexLevelsPanel = () => {
         setLastRefresh(new Date());
       }
     } catch (err) {
-      setError('Failed to refresh Tradier GEX levels');
-      console.error('Error refreshing Tradier GEX levels:', err);
+      setError('Failed to refresh Schwab GEX levels');
+      console.error('Error refreshing Schwab GEX levels:', err);
     } finally {
       setRefreshing(false);
     }
@@ -54,7 +54,7 @@ const TradierGexLevelsPanel = () => {
   useEffect(() => {
     fetchTradierLevels();
 
-    // Refresh every 3 minutes (Tradier updates more frequently)
+    // Refresh every 3 minutes (Schwab updates more frequently)
     const interval = setInterval(fetchTradierLevels, 3 * 60 * 1000);
 
     return () => clearInterval(interval);
@@ -64,7 +64,7 @@ const TradierGexLevelsPanel = () => {
   const formatForTradingView = () => {
     if (!tradierData) return '';
 
-    // Extract values in the required order for Tradier data
+    // Extract values in the required order for Schwab data
     const values = [
       tradierData.gammaFlip || 0,  // zero_gamma/gamma_flip
       tradierData.callWall || 0,
@@ -148,8 +148,8 @@ const TradierGexLevelsPanel = () => {
   if (loading && !tradierData) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-white mb-3">Tradier GEX Levels</h3>
-        <div className="text-gray-400 text-sm">Loading Tradier GEX levels...</div>
+        <h3 className="text-lg font-semibold text-white mb-3">Schwab GEX Levels</h3>
+        <div className="text-gray-400 text-sm">Loading Schwab GEX levels...</div>
       </div>
     );
   }
@@ -157,7 +157,7 @@ const TradierGexLevelsPanel = () => {
   if (error && !tradierData) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-white mb-3">Tradier GEX Levels</h3>
+        <h3 className="text-lg font-semibold text-white mb-3">Schwab GEX Levels</h3>
         <div className="text-red-400 text-sm">{error}</div>
         <button
           onClick={fetchTradierLevels}
@@ -172,7 +172,7 @@ const TradierGexLevelsPanel = () => {
   return (
     <div className="bg-gray-800 rounded-lg p-4">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-semibold text-white">Tradier GEX Levels</h3>
+        <h3 className="text-lg font-semibold text-white">Schwab GEX Levels</h3>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">
             {tradierData?.timestamp ? formatTimestamp(tradierData.timestamp) : 'No timestamp'}
@@ -195,7 +195,7 @@ const TradierGexLevelsPanel = () => {
                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
-            title="Recalculate Tradier GEX levels (fresh data)"
+            title="Recalculate Schwab GEX levels (fresh data)"
           >
             {refreshing ? 'Refreshing...' : 'Recalculate'}
           </button>
@@ -300,7 +300,7 @@ const TradierGexLevelsPanel = () => {
 
           {/* Data source info and regime */}
           <div className="mt-2 text-xs text-gray-500 text-center">
-            Source: Tradier • 0-30 DTE Options • QQQ/NQ Conversion
+            Source: Schwab • 0-30 DTE Options • QQQ/NQ Conversion
             {tradierData.regime && (
               <span> • Regime: <span className={getRegimeColor(tradierData.regime)}>
                 {tradierData.regime.toUpperCase()}
@@ -308,13 +308,13 @@ const TradierGexLevelsPanel = () => {
             )}
             <br />
             <span className="text-gray-600">
-              {tradierData.dataSource === 'tradier' ? '⚡ Fast Updates (3min)' : '📊 Comprehensive Data'}
+              {tradierData.dataSource === 'tradier' ? 'Fast Updates (3min)' : 'Comprehensive Data'}
               {tradierData.usedLivePrices && ' • Live Prices'}
             </span>
           </div>
         </>
       ) : (
-        <div className="text-gray-400 text-sm">No Tradier data available</div>
+        <div className="text-gray-400 text-sm">No Schwab data available</div>
       )}
     </div>
   );

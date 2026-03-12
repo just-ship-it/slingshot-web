@@ -190,7 +190,7 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
                 <tr className="bg-gray-700">
                   <th className="text-left text-gray-300 font-medium px-1.5 py-0.5">Level</th>
                   <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">CBOE</th>
-                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">Tradier</th>
+                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">Schwab</th>
                 </tr>
               </thead>
               <tbody>
@@ -272,13 +272,13 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              {copied === 'tradier' ? 'Copied' : 'Tradier'}
+              {copied === 'tradier' ? 'Copied' : 'Schwab'}
             </button>
           </div>
 
           {/* Source info */}
           <div className="mt-1 text-xs text-gray-400 text-center">
-            CBOE (5min) · Tradier (3min)
+            CBOE (5min) · Schwab (3min)
           </div>
         </>
       )}
