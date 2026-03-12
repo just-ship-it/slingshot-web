@@ -649,7 +649,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       : 'bg-red-900/50 text-red-300 border border-red-700/50'
                   }`}>
                     {signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? '✓' :
-                     signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Tradier
+                     signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Schwab
                   </span>
                   <span className={`px-2 py-0.5 rounded text-xs ${
                     signalGeneratorConnections.connections.cboe?.hasData

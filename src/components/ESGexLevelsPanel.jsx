@@ -272,13 +272,13 @@ const ESGexLevelsPanel = ({ gexData, onRefresh }) => {
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              {copied === 'tradier' ? 'Copied' : 'Tradier'}
+              {copied === 'tradier' ? 'Copied' : 'Schwab'}
             </button>
           </div>
 
           {/* Source info */}
           <div className="mt-1 text-xs text-gray-400 text-center">
-            CBOE (15min delay) · Tradier (real-time)
+            CBOE (15min delay) · Schwab (real-time)
           </div>
         </>
       )}
