@@ -745,10 +745,10 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                     </div>
                   )}
 
-                  {/* Tradier */}
+                  {/* Schwab */}
                   <div className="bg-gray-800/50 rounded p-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">Tradier Options</span>
+                      <span className="text-white text-sm font-medium">Schwab Options</span>
                       <span className={`text-xs ${
                         signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? 'text-green-400' :
                         signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? 'text-yellow-400' : 'text-red-400'
@@ -791,7 +791,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
                         <div><span className="text-gray-400">Primary:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.primarySource || 'N/A'}</span></div>
                         <div><span className="text-gray-400">RTH Cache:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.usingRTHCache ? 'Yes' : 'No'}</span></div>
-                        <div><span className="text-gray-400">Tradier Fresh:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
+                        <div><span className="text-gray-400">Schwab Fresh:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
                       </div>
                     </div>
                   )}
