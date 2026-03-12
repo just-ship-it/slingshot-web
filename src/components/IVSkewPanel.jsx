@@ -145,8 +145,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
     const price = nqPrice;
 
     // Strategy's tradeable level types
-    const tradeSupportLevels = ['S1', 'S2', 'S3', 'S4', 'S5', 'PutWall', 'GammaFlip'];
-    const tradeResistanceLevels = ['R1', 'R2', 'R3', 'R4', 'R5', 'CallWall', 'GammaFlip'];
+    const tradeSupportLevels = ['S1', 'S2', 'S3', 'S4', 'S5', 'PutWall', 'GF'];
+    const tradeResistanceLevels = ['R1', 'R2', 'R3', 'R4', 'R5', 'CallWall', 'GF'];
 
     // Build support levels array (mirrors strategy logic)
     const allSupportLevels = [];
@@ -168,8 +168,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
 
     // GammaFlip (as support when price is above it)
     const gammaFlip = gexLevels.nq_gamma_flip || gexLevels.gammaFlip;
-    if (gammaFlip && tradeSupportLevels.includes('GammaFlip') && gammaFlip < price) {
-      allSupportLevels.push({ type: 'GammaFlip', level: gammaFlip });
+    if (gammaFlip && tradeSupportLevels.includes('GF') && gammaFlip < price) {
+      allSupportLevels.push({ type: 'GF', level: gammaFlip });
     }
 
     // Build resistance levels array (mirrors strategy logic)
@@ -191,8 +191,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
     }
 
     // GammaFlip (as resistance when price is below it)
-    if (gammaFlip && tradeResistanceLevels.includes('GammaFlip') && gammaFlip > price) {
-      allResistanceLevels.push({ type: 'GammaFlip', level: gammaFlip });
+    if (gammaFlip && tradeResistanceLevels.includes('GF') && gammaFlip > price) {
+      allResistanceLevels.push({ type: 'GF', level: gammaFlip });
     }
 
     // Find nearest support within proximity threshold

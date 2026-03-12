@@ -440,6 +440,16 @@ export const api = {
     }
   },
 
+  // Short-DTE IV strategy status from multi-strategy engine
+  async getShortDTEIVStatus() {
+    try {
+      return await apiClient.get('/api/strategy/short-dte-iv/status');
+    } catch (error) {
+      console.log('Short-DTE IV status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {

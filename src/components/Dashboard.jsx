@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import GexComparisonPanel from './GexComparisonPanel';
 import GexChart from './GexChart';
 import IVSkewPanel from './IVSkewPanel';
-import ESCrossSignalPanel from './ESCrossSignalPanel';
-import ESGexLevelsPanel from './ESGexLevelsPanel';
+import ShortDTEIVPanel from './ShortDTEIVPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
 import AITraderPanel from './AITraderPanel';
@@ -34,7 +33,6 @@ const Dashboard = ({
 
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
-  const [esStrategyStatus, setEsStrategyStatus] = useState(null);
 
   // Polling state
   const [pollingInterval, setPollingInterval] = useState(null);
@@ -140,14 +138,6 @@ const Dashboard = ({
     }
   };
 
-  const fetchEsStrategyStatus = async () => {
-    try {
-      const response = await api.getESCrossSignalStatus();
-      if (response?.data) setEsStrategyStatus(response.data);
-    } catch (err) {
-      console.error('Error fetching ES strategy status:', err);
-    }
-  };
 
   // --- Mount effect ---
   useEffect(() => {
@@ -162,8 +152,7 @@ const Dashboard = ({
     const gexInterval = setInterval(() => { fetchGexData(); fetchEsGexData(); }, 3 * 60 * 1000);
 
     fetchStrategyStatus();
-    fetchEsStrategyStatus();
-    const strategyInterval = setInterval(() => { fetchStrategyStatus(); fetchEsStrategyStatus(); }, 10 * 1000);
+    const strategyInterval = setInterval(fetchStrategyStatus, 10 * 1000);
 
     return () => {
       clearInterval(gexInterval);
@@ -307,7 +296,7 @@ const Dashboard = ({
           />
         </div>
         <div className="panel-es-cross">
-          <ESCrossSignalPanel socket={socket} quotes={quotes} />
+          <ShortDTEIVPanel socket={socket} quotes={quotes} />
         </div>
         <div className="panel-ai-trader">
           <AITraderPanel />
@@ -330,7 +319,7 @@ const Dashboard = ({
           <GexChart
             quote={quotes.ES || quotes.MES}
             gexData={esGexData}
-            strategyStatus={esStrategyStatus}
+            strategyStatus={null}
             product="es"
             getCandlesFn={api.getEsCandles}
           />

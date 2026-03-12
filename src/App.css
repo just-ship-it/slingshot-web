@@ -132,7 +132,7 @@
 /* Top row: 5 info panels in a single-row grid */
 .dashboard-top-row {
   display: grid;
-  grid-template-columns: 1fr 1.3fr 1.3fr 1.3fr 1.3fr;
+  grid-template-columns: 1.3fr 1.3fr 1fr 1.3fr 1.3fr;
   gap: 4px;
   flex: 1.2;
   min-height: 0;
