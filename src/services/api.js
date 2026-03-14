@@ -247,6 +247,15 @@ export const api = {
     return await apiClient.get(`/api/signals?limit=${limit}`);
   },
 
+  // Strategy alerts
+  async getAlerts() {
+    return await apiClient.get('/api/alerts');
+  },
+
+  async deleteAlerts() {
+    return await apiClient.delete('/api/alerts');
+  },
+
   // Service monitoring
   async getServices() {
     return await apiClient.get('/api/services');

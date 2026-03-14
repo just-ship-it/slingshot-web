@@ -6,6 +6,7 @@ import ShortDTEIVPanel from './ShortDTEIVPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
 import AITraderPanel from './AITraderPanel';
+import AlertPanel from './AlertPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({
@@ -299,6 +300,9 @@ const Dashboard = ({
             onRefreshNq={fetchGexData}
             onRefreshEs={fetchEsGexData}
           />
+        </div>
+        <div className="panel-alerts">
+          <AlertPanel socket={socket} />
         </div>
       </div>
       {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}
