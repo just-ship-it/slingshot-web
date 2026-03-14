@@ -6,7 +6,6 @@ import ShortDTEIVPanel from './ShortDTEIVPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
 import AITraderPanel from './AITraderPanel';
-import ImpulseFvgPanel from './ImpulseFvgPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({
@@ -284,8 +283,14 @@ const Dashboard = ({
     <div className="dashboard-wrapper">
       {/* Top row: info panels */}
       <div className="dashboard-top-row">
+        <div className="panel-ai-trader">
+          <AITraderPanel />
+        </div>
         <div className="panel-ivskew">
           <IVSkewPanel socket={socket} quotes={quotes} />
+        </div>
+        <div className="panel-es-cross">
+          <ShortDTEIVPanel socket={socket} quotes={quotes} />
         </div>
         <div className="panel-gex">
           <TabbedGexPanel
@@ -294,15 +299,6 @@ const Dashboard = ({
             onRefreshNq={fetchGexData}
             onRefreshEs={fetchEsGexData}
           />
-        </div>
-        <div className="panel-es-cross">
-          <ShortDTEIVPanel socket={socket} quotes={quotes} />
-        </div>
-        <div className="panel-ai-trader">
-          <AITraderPanel />
-        </div>
-        <div className="panel-mnq-scalper">
-          <ImpulseFvgPanel socket={socket} quotes={quotes} />
         </div>
       </div>
       {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}

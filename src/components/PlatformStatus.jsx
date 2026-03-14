@@ -31,7 +31,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
 
   // Strategies
   const [strategies, setStrategies] = useState([]);
-  const [strategiesExpanded, setStrategiesExpanded] = useState(false);
+  const [strategiesExpanded, setStrategiesExpanded] = useState(true);
   const [strategyToggleLoading, setStrategyToggleLoading] = useState(null);
 
   // Relay (values maintained via WebSocket handlers for internal tracking)
@@ -569,6 +569,47 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
             </div>
           ))}
 
+          {/* Macro Briefing - Enhanced Card */}
+          {microserviceHealth['macro-briefing'] && (
+            <div className="bg-gray-700 p-4 rounded relative">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-semibold text-white mb-2">Macro Briefing</h4>
+                  <p className={`text-sm font-bold ${
+                    microserviceHealth['macro-briefing'].status === 'healthy' ? 'text-green-400' :
+                    microserviceHealth['macro-briefing'].status === 'unhealthy' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    {microserviceHealth['macro-briefing'].status === 'healthy' ? 'Healthy' :
+                     microserviceHealth['macro-briefing'].status === 'unhealthy' ? 'Down' : 'Unknown'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateBriefing}
+                  disabled={isBriefingGenerating || macroBriefingHealth?.generating || microserviceHealth['macro-briefing'].status !== 'healthy'}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    isBriefingGenerating || macroBriefingHealth?.generating || microserviceHealth['macro-briefing'].status !== 'healthy'
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700 text-white'
+                  }`}
+                  title="Generate a new macro briefing now"
+                >
+                  {isBriefingGenerating || macroBriefingHealth?.generating ? 'Generating...' : 'Generate Now'}
+                </button>
+              </div>
+              <div className="mt-2 space-y-1 text-xs">
+                {macroBriefingHealth?.lastGeneration && (
+                  <div><span className="text-gray-400">Last Generated:</span> <span className="text-white">{formatAge(macroBriefingHealth.lastGeneration)}</span></div>
+                )}
+                {!macroBriefingHealth?.lastGeneration && (
+                  <div><span className="text-gray-400">Last Generated:</span> <span className="text-gray-500">Never</span></div>
+                )}
+                {macroBriefingHealth?.schedule && (
+                  <div><span className="text-gray-400">Schedule:</span> <span className="text-white">{macroBriefingHealth.schedule}</span></div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Data Service - Enhanced Card with Connection Status */}
           {microserviceHealth['data-service'] && (
             <div className={`bg-gray-700 p-4 rounded relative ${sgConnectionsExpanded ? 'col-span-full' : ''}`}>
@@ -942,46 +983,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
             </div>
           )}
 
-          {/* Macro Briefing - Enhanced Card */}
-          {microserviceHealth['macro-briefing'] && (
-            <div className="bg-gray-700 p-4 rounded relative">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-semibold text-white mb-2">Macro Briefing</h4>
-                  <p className={`text-sm font-bold ${
-                    microserviceHealth['macro-briefing'].status === 'healthy' ? 'text-green-400' :
-                    microserviceHealth['macro-briefing'].status === 'unhealthy' ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {microserviceHealth['macro-briefing'].status === 'healthy' ? 'Healthy' :
-                     microserviceHealth['macro-briefing'].status === 'unhealthy' ? 'Down' : 'Unknown'}
-                  </p>
-                </div>
-                <button
-                  onClick={handleGenerateBriefing}
-                  disabled={isBriefingGenerating || macroBriefingHealth?.generating || microserviceHealth['macro-briefing'].status !== 'healthy'}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    isBriefingGenerating || macroBriefingHealth?.generating || microserviceHealth['macro-briefing'].status !== 'healthy'
-                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                      : 'bg-purple-600 hover:bg-purple-700 text-white'
-                  }`}
-                  title="Generate a new macro briefing now"
-                >
-                  {isBriefingGenerating || macroBriefingHealth?.generating ? 'Generating...' : 'Generate Now'}
-                </button>
-              </div>
-              <div className="mt-2 space-y-1 text-xs">
-                {macroBriefingHealth?.lastGeneration && (
-                  <div><span className="text-gray-400">Last Generated:</span> <span className="text-white">{formatAge(macroBriefingHealth.lastGeneration)}</span></div>
-                )}
-                {!macroBriefingHealth?.lastGeneration && (
-                  <div><span className="text-gray-400">Last Generated:</span> <span className="text-gray-500">Never</span></div>
-                )}
-                {macroBriefingHealth?.schedule && (
-                  <div><span className="text-gray-400">Schedule:</span> <span className="text-white">{macroBriefingHealth.schedule}</span></div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Health Controls */}
