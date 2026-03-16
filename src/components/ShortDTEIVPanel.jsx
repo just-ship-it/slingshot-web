@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import PositionBanner from './PositionBanner';
 
 const ShortDTEIVPanel = ({ socket, quotes }) => {
   const [status, setStatus] = useState(null);
@@ -137,6 +138,8 @@ const ShortDTEIVPanel = ({ socket, quotes }) => {
         </div>
       </div>
 
+      <PositionBanner productPosition={status?.product_position} />
+
       <div className="flex flex-col flex-1 justify-between min-h-0">
         {/* IV Levels */}
         {!isWarming && ivSnap && (
@@ -238,20 +241,10 @@ const ShortDTEIVPanel = ({ socket, quotes }) => {
               {readiness.conditions_met?.map((c, i) => (
                 <div key={i} className="text-green-400">{'\u2713'} {c}</div>
               ))}
-              {readiness.blockers?.map((b, i) => (
+              {readiness.blockers?.filter(b => !b.startsWith('Position held by')).map((b, i) => (
                 <div key={i} className="text-red-400">{'\u2717'} {b}</div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Position State */}
-        {position?.in_position && position.current && (
-          <div className="bg-yellow-900/30 border border-yellow-600 rounded px-1.5 py-1 mb-1.5 text-[15px]">
-            <span className="text-yellow-400 font-semibold">IN POSITION</span>
-            <span className="text-gray-300 ml-2">
-              {position.current.side?.toUpperCase()} {position.current.symbol} @ {position.current.entry_price?.toFixed(2)}
-            </span>
           </div>
         )}
 

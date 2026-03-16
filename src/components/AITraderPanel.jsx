@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import PositionBanner from './PositionBanner';
 
 const BIAS_COLORS = {
   BULLISH: 'text-green-400',
@@ -173,6 +174,16 @@ const AITraderPanel = () => {
         </div>
       </div>
 
+      <PositionBanner productPosition={position?.in_position ? {
+        in_position: true,
+        strategy: 'AI_TRADER',
+        side: position.current?.side,
+        symbol: position.current?.symbol,
+        entry_price: position.current?.entry_price,
+        quantity: null,
+        is_own: true
+      } : null} />
+
       <div className="flex flex-col flex-1 justify-between min-h-0">
         {/* Bias Section */}
         {bias ? (
@@ -274,16 +285,6 @@ const AITraderPanel = () => {
               {lastEval.confidence && <span>Conf: {lastEval.confidence}/5</span>}
               {lastEval.riskRewardRatio && <span>R:R {lastEval.riskRewardRatio}:1</span>}
             </div>
-          </div>
-        )}
-
-        {/* Position State */}
-        {position?.in_position && position.current && (
-          <div className="bg-yellow-900/30 border border-yellow-600 rounded px-1.5 py-1 mb-1.5 text-[15px]">
-            <span className="text-yellow-400 font-semibold">IN POSITION</span>
-            <span className="text-gray-300 ml-2">
-              {position.current.side?.toUpperCase()} {position.current.symbol} @ {position.current.entry_price?.toFixed(2)}
-            </span>
           </div>
         )}
 

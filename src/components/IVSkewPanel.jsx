@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import PositionBanner from './PositionBanner';
 
 const IVSkewPanel = ({ socket, quotes }) => {
   const [ivData, setIvData] = useState(null);
@@ -10,6 +11,7 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const [candleCountdown, setCandleCountdown] = useState(0);
   const [strategyBlockers, setStrategyBlockers] = useState([]);
   const [cooldownData, setCooldownData] = useState(null);
+  const [productPosition, setProductPosition] = useState(null);
 
   // Update candle countdown every second
   useEffect(() => {
@@ -72,12 +74,15 @@ const IVSkewPanel = ({ socket, quotes }) => {
     try {
       const response = await api.getIVSkewGexStatus();
       if (response?.evaluation_readiness?.blockers) {
-        setStrategyBlockers(response.evaluation_readiness.blockers);
+        setStrategyBlockers(response.evaluation_readiness.blockers.filter(b => !b.startsWith('Position held by')));
       } else {
         setStrategyBlockers([]);
       }
       if (response?.cooldown) {
         setCooldownData(response.cooldown);
+      }
+      if (response?.product_position) {
+        setProductPosition(response.product_position);
       }
     } catch (err) {
       // silent
@@ -347,6 +352,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
           {signalBadge.text}
         </div>
       </div>
+
+      <PositionBanner productPosition={productPosition} />
 
       {ivData ? (
         <div className="flex flex-col flex-1 justify-between min-h-0">
