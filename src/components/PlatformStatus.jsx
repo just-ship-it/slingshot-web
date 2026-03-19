@@ -44,6 +44,12 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [tokenSubmitting, setTokenSubmitting] = useState(false);
   const [tokenMessage, setTokenMessage] = useState(null);
 
+  // Schwab token
+  const [showSchwabTokenForm, setShowSchwabTokenForm] = useState(false);
+  const [schwabTokenInput, setSchwabTokenInput] = useState('');
+  const [schwabTokenSubmitting, setSchwabTokenSubmitting] = useState(false);
+  const [schwabTokenMessage, setSchwabTokenMessage] = useState(null);
+
   // Sync
   const [isFullSyncing, setIsFullSyncing] = useState(false);
 
@@ -205,6 +211,25 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       setTokenMessage({ type: 'error', text: msg });
     } finally {
       setTokenSubmitting(false);
+    }
+  };
+
+  const handleSchwabTokenSubmit = async (e) => {
+    e.preventDefault();
+    if (!schwabTokenInput.trim()) return;
+    setSchwabTokenSubmitting(true);
+    setSchwabTokenMessage(null);
+    try {
+      const result = await api.setSchwabToken(schwabTokenInput.trim());
+      setSchwabTokenMessage({ type: 'success', text: result.message || 'Token updated' });
+      setSchwabTokenInput('');
+      setShowSchwabTokenForm(false);
+      setTimeout(fetchSignalGeneratorConnections, 3000);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to set token';
+      setSchwabTokenMessage({ type: 'error', text: msg });
+    } finally {
+      setSchwabTokenSubmitting(false);
     }
   };
 
@@ -802,6 +827,49 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       <div><span className="text-gray-400">Running:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.running ? 'Yes' : 'No'}</span></div>
                       <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
                       <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
+                    </div>
+                    {/* Set Schwab Token */}
+                    <div className="mt-2">
+                      {!showSchwabTokenForm ? (
+                        <button
+                          onClick={() => { setShowSchwabTokenForm(true); setSchwabTokenMessage(null); }}
+                          className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                        >
+                          Set Refresh Token
+                        </button>
+                      ) : (
+                        <form onSubmit={handleSchwabTokenSubmit} className="space-y-2">
+                          <textarea
+                            value={schwabTokenInput}
+                            onChange={(e) => setSchwabTokenInput(e.target.value)}
+                            placeholder="Paste Schwab refresh token"
+                            className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={schwabTokenSubmitting || !schwabTokenInput.trim()}
+                              className="text-xs px-3 py-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+                            >
+                              {schwabTokenSubmitting ? 'Updating...' : 'Submit'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setShowSchwabTokenForm(false); setSchwabTokenInput(''); setSchwabTokenMessage(null); }}
+                              className="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      {schwabTokenMessage && (
+                        <div className={`mt-1 text-xs ${schwabTokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                          {schwabTokenMessage.text}
+                        </div>
+                      )}
                     </div>
                   </div>
 
