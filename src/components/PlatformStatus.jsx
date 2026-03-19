@@ -828,21 +828,31 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
                       <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
                     </div>
-                    {/* Set Schwab Token */}
+                    {/* Schwab OAuth */}
                     <div className="mt-2">
                       {!showSchwabTokenForm ? (
                         <button
                           onClick={() => { setShowSchwabTokenForm(true); setSchwabTokenMessage(null); }}
                           className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
                         >
-                          Set Refresh Token
+                          Re-authenticate
                         </button>
                       ) : (
                         <form onSubmit={handleSchwabTokenSubmit} className="space-y-2">
+                          <div className="text-xs text-gray-400">
+                            1. <a
+                              href="https://api.schwabapi.com/v1/oauth/authorize?client_id=buA1SLS7GCPwg67M9ZjsKyRvbIUZpyBLcTOWYFhJBluwq4tk&redirect_uri=https://127.0.0.1:8182"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >Open Schwab login</a> and authorize
+                            <br />2. Copy the redirect URL from the address bar
+                            <br />3. Paste it below
+                          </div>
                           <textarea
                             value={schwabTokenInput}
                             onChange={(e) => setSchwabTokenInput(e.target.value)}
-                            placeholder="Paste Schwab refresh token"
+                            placeholder="Paste redirect URL (https://127.0.0.1:8182?code=...)"
                             className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
                             rows={3}
                             autoFocus
@@ -853,7 +863,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                               disabled={schwabTokenSubmitting || !schwabTokenInput.trim()}
                               className="text-xs px-3 py-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
                             >
-                              {schwabTokenSubmitting ? 'Updating...' : 'Submit'}
+                              {schwabTokenSubmitting ? 'Authenticating...' : 'Submit'}
                             </button>
                             <button
                               type="button"

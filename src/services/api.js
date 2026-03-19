@@ -399,8 +399,8 @@ export const api = {
     return await apiClient.post('/api/tradingview/token', { token });
   },
 
-  async setSchwabToken(refreshToken) {
-    return await apiClient.post('/api/schwab/token', { refreshToken });
+  async setSchwabToken(redirectUrl) {
+    return await apiClient.post('/api/schwab/token', { redirectUrl });
   },
 
   // Get siggen-es-cross detailed connection status
