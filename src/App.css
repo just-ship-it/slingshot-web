@@ -142,10 +142,10 @@
   overflow: hidden;
 }
 
-/* Bottom row: same 4-col grid as top row so panel matches a top-panel width */
+/* Bottom row: 4 fixed panels — NQ chart, ES chart, Positions, Alerts */
 .dashboard-bottom-row {
   display: grid;
-  grid-template-columns: 1fr 1.3fr 1.3fr 1.3fr;
+  grid-template-columns: 1.5fr 1.5fr 1.3fr 1fr;
   gap: 4px;
   flex: 1;
   min-height: 0;
@@ -154,19 +154,6 @@
 .dashboard-bottom-row > div {
   min-height: 0;
   overflow: hidden;
-}
-
-/* Default (panel closed): NQ and ES each span 2 of 4 columns */
-.dashboard-bottom-row .panel-nq-chart { grid-column: span 2; }
-.dashboard-bottom-row .panel-es-chart { grid-column: span 2; }
-
-/* Panel open: 3-col grid — equal charts + panel matches top-row 1.3fr width */
-.dashboard-bottom-row.panel-open {
-  grid-template-columns: 1.8fr 1.8fr 1.3fr;
-}
-.dashboard-bottom-row.panel-open .panel-nq-chart,
-.dashboard-bottom-row.panel-open .panel-es-chart {
-  grid-column: span 1;
 }
 
 /* Trading panel — fills its grid cell when open */

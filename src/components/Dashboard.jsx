@@ -3,6 +3,7 @@ import GexComparisonPanel from './GexComparisonPanel';
 import GexChart from './GexChart';
 import IVSkewPanel from './IVSkewPanel';
 import ShortDTEIVPanel from './ShortDTEIVPanel';
+import LTCandleRegimePanel from './LTCandleRegimePanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import TradingPanel from './TradingPanel';
 import AITraderPanel from './AITraderPanel';
@@ -293,6 +294,9 @@ const Dashboard = ({
         <div className="panel-es-cross">
           <ShortDTEIVPanel socket={socket} quotes={quotes} />
         </div>
+        <div className="panel-lt-regime">
+          <LTCandleRegimePanel socket={socket} quotes={quotes} />
+        </div>
         <div className="panel-gex">
           <TabbedGexPanel
             nqGexData={gexData}
@@ -301,12 +305,9 @@ const Dashboard = ({
             onRefreshEs={fetchEsGexData}
           />
         </div>
-        <div className="panel-alerts">
-          <AlertPanel socket={socket} />
-        </div>
       </div>
-      {/* Bottom row: charts + trading panel (same 4-col grid as top row) */}
-      <div className={`dashboard-bottom-row ${tradingPanelOpen ? 'panel-open' : ''}`}>
+      {/* Bottom row: charts + trading + alerts */}
+      <div className="dashboard-bottom-row panel-open">
         <div className="panel-nq-chart">
           <GexChart
             quote={quotes.NQ || quotes.MNQ}
@@ -324,24 +325,16 @@ const Dashboard = ({
             getCandlesFn={api.getEsCandles}
           />
         </div>
-        {tradingPanelOpen && (
-          <TradingPanel
-            open={true}
-            onToggle={onToggleTradingPanel}
-            tradingData={tradingData}
-            isLoading={tradingDataLoading}
-            quotes={quotes}
-          />
-        )}
-        {!tradingPanelOpen && (
-          <TradingPanel
-            open={false}
-            onToggle={onToggleTradingPanel}
-            tradingData={tradingData}
-            isLoading={tradingDataLoading}
-            quotes={quotes}
-          />
-        )}
+        <TradingPanel
+          open={true}
+          onToggle={() => {}}
+          tradingData={tradingData}
+          isLoading={tradingDataLoading}
+          quotes={quotes}
+        />
+        <div className="panel-alerts">
+          <AlertPanel socket={socket} />
+        </div>
       </div>
       {/* Mobile/tablet: always-visible trading panel below charts */}
       <div className="mobile-trading-panel">

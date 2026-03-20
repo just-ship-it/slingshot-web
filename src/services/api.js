@@ -463,6 +463,16 @@ export const api = {
     }
   },
 
+  // LT Candle Regime strategy status from multi-strategy engine
+  async getLTCandleRegimeStatus() {
+    try {
+      return await apiClient.get('/api/strategy/lt-candle-regime/status');
+    } catch (error) {
+      console.log('LT Candle Regime status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {
