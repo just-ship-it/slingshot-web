@@ -88,8 +88,13 @@ const LTCandleRegimePanel = ({ socket, quotes }) => {
   const latchMin = Math.floor(nextLatchIn / 60);
   const latchSec = nextLatchIn % 60;
 
-  // Find the closest level to a potential transition
   const nqPrice = quotes?.NQ?.last || quotes?.MNQ?.last;
+
+  // Find the closest level to triggering
+  const levelEntries = Object.entries(levelStates);
+  const closestLevel = levelEntries
+    .filter(([, d]) => d.triggerDist != null && d.triggerDist >= 0)
+    .sort((a, b) => a[1].triggerDist - b[1].triggerDist)[0]?.[0] || null;
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
@@ -119,28 +124,44 @@ const LTCandleRegimePanel = ({ socket, quotes }) => {
 
         {/* LT Levels Table */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-          <div className="grid grid-cols-3 gap-x-2 text-[15px] mb-0.5">
+          <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-2 text-[15px] mb-0.5">
             <span className="text-gray-400 font-medium">Level</span>
             <span className="text-gray-400 font-medium text-right">Price</span>
             <span className="text-gray-400 font-medium text-right">State</span>
+            <span className="text-gray-400 font-medium text-right">Trigger</span>
           </div>
-          {Object.entries(levelStates).map(([name, data]) => {
-            const dist = data.price && nqPrice ? (nqPrice - data.price).toFixed(1) : null;
+          {levelEntries.map(([name, data]) => {
+            const isClosest = name === closestLevel;
+            const rowBg = isClosest
+              ? data.pendingSignal === 'LONG' ? 'bg-green-900/30 border-green-600/40'
+              : data.pendingSignal === 'SHORT' ? 'bg-red-900/30 border-red-600/40'
+              : 'bg-yellow-900/30 border-yellow-600/40'
+              : 'border-gray-600';
             return (
-              <div key={name} className="grid grid-cols-3 gap-x-2 text-[15px] py-0.5 border-t border-gray-600">
-                <span className="text-white font-mono">{name}</span>
+              <div key={name} className={`grid grid-cols-[auto_1fr_auto_auto] gap-x-2 text-[15px] py-0.5 border-t ${rowBg} ${isClosest ? 'rounded px-1 -mx-1' : ''}`}>
+                <span className={`font-mono ${isClosest ? 'text-white font-bold' : 'text-white'}`}>{name}</span>
                 <span className="text-white font-mono text-right">
-                  {data.price ? data.price.toFixed(2) : '--'}
+                  {data.price ? data.price.toFixed(1) : '--'}
                 </span>
-                <div className="flex items-center justify-end gap-1">
-                  <span className={`font-mono font-bold ${stateColor(data.candleState)}`}>
-                    {data.candleState || '--'}
-                  </span>
-                  {dist && (
-                    <span className="text-gray-400 text-[13px]">
-                      ({dist > 0 ? '+' : ''}{dist})
+                <span className={`font-mono font-bold text-right ${stateColor(data.candleState)}`}>
+                  {data.candleState || '--'}
+                </span>
+                <div className="flex items-center justify-end gap-1 min-w-[100px]">
+                  {data.pendingSignal && data.pendingSignal !== 'EITHER' && (
+                    <span className={`text-[11px] font-bold px-1 rounded ${
+                      data.pendingSignal === 'LONG' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'
+                    }`}>
+                      {data.pendingSignal === 'LONG' ? '↑' : '↓'}{data.pendingSignal}
                     </span>
                   )}
+                  {data.pendingSignal === 'EITHER' && (
+                    <span className="text-[11px] font-bold px-1 rounded bg-yellow-800 text-yellow-300">↕STRADDLE</span>
+                  )}
+                  <span className={`font-mono text-[13px] ${
+                    isClosest ? 'text-white font-bold' : 'text-gray-400'
+                  }`}>
+                    {data.triggerDist != null ? `${data.triggerDist.toFixed(1)}pts` : '--'}
+                  </span>
                 </div>
               </div>
             );
