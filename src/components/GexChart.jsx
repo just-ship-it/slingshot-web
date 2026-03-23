@@ -357,7 +357,7 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     const createLtLine = (price, title, color) => {
       if (!price || price === 0) return;
       try {
-        const line = seriesRef.current.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title });
+        const line = seriesRef.current.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title });
         ltLinesRef.current.push(line);
       } catch (e) {}
     };
