@@ -14,13 +14,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', resizeObserverHandler, true);
 }
 
-const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn }) => {
+const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const zgSeriesRef = useRef(null);
   const priceLinesRef = useRef([]);
   const positionLinesRef = useRef([]);
+  const ltLinesRef = useRef([]);
   const candleHistoryRef = useRef([]);
   const zgHistoryRef = useRef([]);
   const currentPriceRef = useRef(null);
@@ -346,6 +347,31 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
       createPositionLine(isLong ? position.entry_price - 3 : position.entry_price + 3, 'STOP', '#ef4444', 2, 1);
     }
   }, [strategyStatus?.position, chartReady]);
+
+  // LT level lines
+  useEffect(() => {
+    if (!seriesRef.current || !chartReady) return;
+    ltLinesRef.current.forEach(line => { try { seriesRef.current.removePriceLine(line); } catch (e) {} });
+    ltLinesRef.current = [];
+    if (!ltLevels) return;
+    const createLtLine = (price, title, color) => {
+      if (!price || price === 0) return;
+      try {
+        const line = seriesRef.current.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title });
+        ltLinesRef.current.push(line);
+      } catch (e) {}
+    };
+    const levels = [
+      { key: 'L2', name: 'LT34' },
+      { key: 'L3', name: 'LT55' },
+      { key: 'L4', name: 'LT144' },
+      { key: 'L5', name: 'LT377' },
+      { key: 'L6', name: 'LT610' },
+    ];
+    levels.forEach(({ key, name }) => {
+      createLtLine(ltLevels[key], name, '#a855f7');
+    });
+  }, [ltLevels, chartReady]);
 
   const getStatusMessage = () => {
     if (loading && !gexLevels) return 'Loading GEX levels...';

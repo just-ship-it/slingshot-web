@@ -32,6 +32,10 @@ const Dashboard = ({
   const [gexData, setGexData] = useState({ cboe: null, tradier: null });
   const [esGexData, setEsGexData] = useState({ cboe: null, tradier: null });
 
+  // LT levels
+  const [nqLtLevels, setNqLtLevels] = useState(null);
+  const [esLtLevels, setEsLtLevels] = useState(null);
+
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
 
@@ -223,8 +227,16 @@ const Dashboard = ({
       loadAccountSummary();
     };
 
+    const handleLtLevels = (data) => {
+      if (!data) return;
+      const product = (data.product || 'NQ').toUpperCase();
+      if (product === 'NQ') setNqLtLevels(data);
+      else if (product === 'ES') setEsLtLevels(data);
+    };
+
     socket.socket.on('market_data', handleMarketData);
     socket.socket.on('gex_levels', handleGexLevelsUpdate);
+    socket.socket.on('lt_levels', handleLtLevels);
     socket.socket.on('initial_state', handleInitialState);
     socket.socket.on('account_data_updated', handleAccountDataUpdated);
     socket.socket.on('position_update', handlePositionChange);
@@ -233,6 +245,7 @@ const Dashboard = ({
     return () => {
       socket.socket.off('market_data', handleMarketData);
       socket.socket.off('gex_levels', handleGexLevelsUpdate);
+      socket.socket.off('lt_levels', handleLtLevels);
       socket.socket.off('initial_state', handleInitialState);
       socket.socket.off('account_data_updated', handleAccountDataUpdated);
       socket.socket.off('position_update', handlePositionChange);
@@ -314,6 +327,7 @@ const Dashboard = ({
             gexData={gexData}
             strategyStatus={strategyStatus}
             product="nq"
+            ltLevels={nqLtLevels}
           />
         </div>
         <div className="panel-es-chart">
@@ -322,6 +336,7 @@ const Dashboard = ({
             gexData={esGexData}
             strategyStatus={null}
             product="es"
+            ltLevels={esLtLevels}
             getCandlesFn={api.getEsCandles}
           />
         </div>
