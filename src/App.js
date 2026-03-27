@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
 import PlatformStatus from './components/PlatformStatus';
 import MacroBriefing from './components/MacroBriefing';
+import PnLPanel from './components/PnLPanel';
 import CompactHeader from './components/CompactHeader';
 import ToastContainer, { formatToastMessage } from './components/ToastContainer';
 import Login from './components/Login';
@@ -21,6 +22,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMacroModal, setShowMacroModal] = useState(false);
+  const [showPnLModal, setShowPnLModal] = useState(false);
 
   // Lifted state for header
   const [quotes, setQuotes] = useState({});
@@ -249,6 +251,7 @@ function App() {
         connectionStatus={connectionStatus}
         onStatusClick={() => setShowStatusModal(true)}
         onMacroClick={() => setShowMacroModal(true)}
+        onPnLClick={() => setShowPnLModal(true)}
         onLogout={handleLogout}
       />
 
@@ -305,6 +308,26 @@ function App() {
             </div>
             <div className="flex-1 overflow-y-auto">
               <PlatformStatus socket={socket} tradovateStatus={tradovateStatus} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* P&L History Modal */}
+      {showPnLModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-8 px-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-white">P&L History</h2>
+              <button
+                onClick={() => setShowPnLModal(false)}
+                className="text-gray-400 hover:text-white transition-colors text-xl leading-none px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <PnLPanel />
             </div>
           </div>
         </div>

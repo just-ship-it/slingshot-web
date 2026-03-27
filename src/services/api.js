@@ -533,6 +533,25 @@ export const api = {
     }
   },
 
+  // P&L History endpoints (from sync-pnl.js → Redis)
+  async getPnLTrades(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return await apiClient.get(`/api/pnl/trades${query ? '?' + query : ''}`);
+  },
+
+  async getPnLDaily(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return await apiClient.get(`/api/pnl/daily${query ? '?' + query : ''}`);
+  },
+
+  async getPnLSummary() {
+    return await apiClient.get('/api/pnl/summary');
+  },
+
+  async triggerPnLSync() {
+    return await apiClient.post('/api/pnl/sync');
+  },
+
   // Macro Briefing endpoints
   async getLatestBriefing() {
     return await apiClient.get('/api/briefing/latest');

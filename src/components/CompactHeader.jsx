@@ -19,6 +19,7 @@ const CompactHeader = ({
   connectionStatus,
   onStatusClick,
   onMacroClick,
+  onPnLClick,
   onLogout,
 }) => {
   const formatChange = (value) => {
@@ -82,13 +83,17 @@ const CompactHeader = ({
           <span className="text-gray-300 mr-1">Avail</span>
           <span className="font-semibold text-white">{formatCurrency(accountSummary.availableFunds)}</span>
         </span>
-        <span>
+        <button
+          onClick={onPnLClick}
+          className="hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors"
+          title="View P&L History"
+        >
           <span className="text-gray-300 mr-1">P&L</span>
           <span className={`font-semibold ${pnlColor}`}>
             {dayPnL != null ? `${dayPnL >= 0 ? '+' : ''}$${Math.abs(dayPnL).toFixed(2)}` : '--'}
             {dayPnLPct != null && ` (${dayPnLPct >= 0 ? '+' : ''}${dayPnLPct.toFixed(2)}%)`}
           </span>
-        </span>
+        </button>
         <button
           onClick={onToggleTradingPanel}
           className={`desktop-only flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
