@@ -39,12 +39,13 @@ const PnLPanel = () => {
   const handleSync = async () => {
     try {
       setSyncing(true);
+      setError(null);
       await api.triggerPnLSync();
-      // Wait a moment for sync to complete, then reload
-      setTimeout(() => { loadData(); setSyncing(false); }, 5000);
+      await loadData();
     } catch (err) {
-      setSyncing(false);
       setError(`Sync failed: ${err.message}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
