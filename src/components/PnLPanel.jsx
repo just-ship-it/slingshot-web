@@ -58,9 +58,6 @@ const PnLPanel = () => {
   };
   const pnlColor = (v) => v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-400';
 
-  // Find max absolute daily P&L for bar chart scaling
-  const maxDailyPnl = daily.length > 0 ? Math.max(...daily.map(d => Math.abs(d.netPnl)), 1) : 1;
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -141,52 +138,21 @@ const PnLPanel = () => {
             <StatBox label="Total Fees" value={fmtDollar(summary.totalFees)} color="text-gray-400" />
           </div>
 
-          {/* Cumulative P&L chart (bar chart by day) */}
+          {/* Daily P&L bar chart (horizontal) with cumulative line */}
           {daily.length > 0 && (
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Daily P&L</h3>
-              <div className="space-y-1.5">
-                {daily.map(day => (
-                  <div key={day.date} className="flex items-center gap-2 text-xs">
-                    <span className="text-gray-400 w-20 flex-shrink-0 font-mono">{day.date.slice(5)}</span>
-                    <div className="flex-1 flex items-center h-5">
-                      {/* Center-anchored bar */}
-                      <div className="relative w-full h-full flex items-center">
-                        <div className="absolute left-1/2 w-px h-full bg-gray-600" />
-                        {day.netPnl >= 0 ? (
-                          <div
-                            className="absolute left-1/2 h-3 rounded-r bg-green-500/70"
-                            style={{ width: `${(day.netPnl / maxDailyPnl) * 50}%` }}
-                          />
-                        ) : (
-                          <div
-                            className="absolute h-3 rounded-l bg-red-500/70"
-                            style={{
-                              width: `${(Math.abs(day.netPnl) / maxDailyPnl) * 50}%`,
-                              right: '50%',
-                            }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                    <span className={`w-20 text-right font-mono flex-shrink-0 ${pnlColor(day.netPnl)}`}>
-                      {fmtPnL(day.netPnl)}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-300">Daily P&L</h3>
+                {daily[daily.length - 1].cumulativeNetPnl != null && (
+                  <span className="text-xs">
+                    <span className="text-gray-500 mr-1">Cumulative:</span>
+                    <span className={`font-semibold font-mono ${pnlColor(daily[daily.length - 1].cumulativeNetPnl)}`}>
+                      {fmtPnL(daily[daily.length - 1].cumulativeNetPnl)}
                     </span>
-                    <span className="text-gray-500 w-16 text-right flex-shrink-0">
-                      {day.trades}t {day.winRate}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {/* Cumulative line */}
-              {daily.length > 1 && daily[daily.length - 1].cumulativeNetPnl != null && (
-                <div className="mt-3 pt-2 border-t border-gray-700 flex justify-between text-xs">
-                  <span className="text-gray-400">Cumulative Net P&L</span>
-                  <span className={`font-semibold ${pnlColor(daily[daily.length - 1].cumulativeNetPnl)}`}>
-                    {fmtPnL(daily[daily.length - 1].cumulativeNetPnl)}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
+              <DailyPnLChart daily={daily} fmtPnL={fmtPnL} fmtDollar={fmtDollar} pnlColor={pnlColor} />
             </div>
           )}
 
@@ -293,6 +259,91 @@ const StatBox = ({ label, value, color = 'text-white' }) => (
     <div className={`text-sm font-semibold font-mono ${color}`}>{value}</div>
   </div>
 );
+
+const DailyPnLChart = ({ daily, fmtPnL, pnlColor }) => {
+  const maxPnl = Math.max(...daily.map(d => Math.abs(d.netPnl)), 1);
+  const maxCum = Math.max(...daily.map(d => Math.abs(d.cumulativeNetPnl || 0)), 1);
+  const chartHeight = 140;
+  const barAreaHeight = chartHeight - 20; // leave room for labels
+  const midY = barAreaHeight / 2;
+
+  // SVG cumulative line points
+  const cumPoints = daily.map((d, i) => {
+    const x = ((i + 0.5) / daily.length) * 100; // percentage
+    const y = midY - ((d.cumulativeNetPnl || 0) / maxCum) * (midY * 0.85);
+    return { x, y, val: d.cumulativeNetPnl };
+  });
+  const linePath = cumPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+  return (
+    <div className="relative" style={{ height: chartHeight }}>
+      {/* Zero line */}
+      <div className="absolute left-0 right-0 border-t border-gray-600/50" style={{ top: midY }} />
+
+      {/* Bars + labels */}
+      <div className="absolute inset-0 flex items-end" style={{ height: barAreaHeight }}>
+        {daily.map((day, i) => {
+          const barHeight = (Math.abs(day.netPnl) / maxPnl) * (midY * 0.85);
+          const isPositive = day.netPnl >= 0;
+          const dayLabel = day.date.slice(5); // MM-DD
+          const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+
+          return (
+            <div key={day.date} className="flex-1 flex flex-col items-center relative" style={{ height: barAreaHeight }}>
+              {/* Bar */}
+              <div className="absolute left-1 right-1 flex flex-col items-center" style={{ top: 0, height: barAreaHeight }}>
+                {isPositive ? (
+                  <div
+                    className="absolute left-1 right-1 bg-green-500/70 rounded-t"
+                    style={{ bottom: midY, height: barHeight }}
+                  />
+                ) : (
+                  <div
+                    className="absolute left-1 right-1 bg-red-500/70 rounded-b"
+                    style={{ top: midY, height: barHeight }}
+                  />
+                )}
+              </div>
+
+              {/* P&L value label */}
+              <div
+                className={`absolute text-[10px] font-mono font-semibold ${pnlColor(day.netPnl)} whitespace-nowrap`}
+                style={{ top: isPositive ? midY - barHeight - 14 : midY + barHeight + 2 }}
+              >
+                {fmtPnL(day.netPnl)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Cumulative line (SVG overlay) */}
+      <svg
+        className="absolute inset-0 pointer-events-none"
+        viewBox={`0 0 100 ${barAreaHeight}`}
+        preserveAspectRatio="none"
+        style={{ height: barAreaHeight }}
+      >
+        <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="0.8" strokeLinejoin="round" />
+        {cumPoints.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="1.2" fill="#60a5fa" />
+        ))}
+      </svg>
+
+      {/* Date labels at bottom */}
+      <div className="absolute left-0 right-0 flex" style={{ top: barAreaHeight + 2 }}>
+        {daily.map(day => {
+          const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+          return (
+            <div key={day.date} className="flex-1 text-center text-[10px] text-gray-500">
+              {weekday} {day.date.slice(8)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 function formatTime(iso) {
   if (!iso) return '--';
