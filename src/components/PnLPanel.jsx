@@ -263,85 +263,70 @@ const StatBox = ({ label, value, color = 'text-white' }) => (
 const DailyPnLChart = ({ daily, fmtPnL, pnlColor }) => {
   const maxPnl = Math.max(...daily.map(d => Math.abs(d.netPnl)), 1);
   const maxCum = Math.max(...daily.map(d => Math.abs(d.cumulativeNetPnl || 0)), 1);
-  const chartHeight = 140;
-  const barAreaHeight = chartHeight - 20; // leave room for labels
-  const midY = barAreaHeight / 2;
 
-  // SVG cumulative line points
-  const cumPoints = daily.map((d, i) => {
-    const x = ((i + 0.5) / daily.length) * 100; // percentage
-    const y = midY - ((d.cumulativeNetPnl || 0) / maxCum) * (midY * 0.85);
-    return { x, y, val: d.cumulativeNetPnl };
-  });
+  // Use SVG for everything so bars and line share the same coordinate system
+  const n = daily.length;
+  const svgW = 400;
+  const svgH = 200;
+  const padTop = 22;   // room for labels above bars
+  const padBot = 30;   // room for labels + day names below
+  const chartH = svgH - padTop - padBot;
+  const midY = padTop + chartH / 2;
+  const colW = svgW / n;
+  const barW = Math.min(colW * 0.55, 50);
+  const maxBarH = chartH / 2 * 0.85;
+
+  const cumPoints = daily.map((d, i) => ({
+    x: colW * i + colW / 2,
+    y: midY - ((d.cumulativeNetPnl || 0) / maxCum) * maxBarH,
+  }));
   const linePath = cumPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
   return (
-    <div className="relative" style={{ height: chartHeight }}>
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ minHeight: 160 }}>
       {/* Zero line */}
-      <div className="absolute left-0 right-0 border-t border-gray-600/50" style={{ top: midY }} />
+      <line x1="0" y1={midY} x2={svgW} y2={midY} stroke="#4b5563" strokeWidth="0.5" />
 
       {/* Bars + labels */}
-      <div className="absolute inset-0 flex items-end" style={{ height: barAreaHeight }}>
-        {daily.map((day, i) => {
-          const barHeight = (Math.abs(day.netPnl) / maxPnl) * (midY * 0.85);
-          const isPositive = day.netPnl >= 0;
-          const dayLabel = day.date.slice(5); // MM-DD
-          const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+      {daily.map((day, i) => {
+        const cx = colW * i + colW / 2;
+        const barH = (Math.abs(day.netPnl) / maxPnl) * maxBarH;
+        const isPos = day.netPnl >= 0;
+        const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
 
-          return (
-            <div key={day.date} className="flex-1 flex flex-col items-center relative" style={{ height: barAreaHeight }}>
-              {/* Bar */}
-              <div className="absolute left-1 right-1 flex flex-col items-center" style={{ top: 0, height: barAreaHeight }}>
-                {isPositive ? (
-                  <div
-                    className="absolute left-1 right-1 bg-green-500/70 rounded-t"
-                    style={{ bottom: midY, height: barHeight }}
-                  />
-                ) : (
-                  <div
-                    className="absolute left-1 right-1 bg-red-500/70 rounded-b"
-                    style={{ top: midY, height: barHeight }}
-                  />
-                )}
-              </div>
-
-              {/* P&L value label */}
-              <div
-                className={`absolute text-[10px] font-mono font-semibold ${pnlColor(day.netPnl)} whitespace-nowrap`}
-                style={{ top: isPositive ? midY - barHeight - 14 : midY + barHeight + 2 }}
-              >
-                {fmtPnL(day.netPnl)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Cumulative line (SVG overlay) */}
-      <svg
-        className="absolute inset-0 pointer-events-none"
-        viewBox={`0 0 100 ${barAreaHeight}`}
-        preserveAspectRatio="none"
-        style={{ height: barAreaHeight }}
-      >
-        <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="0.8" strokeLinejoin="round" />
-        {cumPoints.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="1.2" fill="#60a5fa" />
-        ))}
-      </svg>
-
-      {/* Date labels at bottom */}
-      <div className="absolute left-0 right-0 flex" style={{ top: barAreaHeight + 2 }}>
-        {daily.map(day => {
-          const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-          return (
-            <div key={day.date} className="flex-1 text-center text-[10px] text-gray-500">
+        return (
+          <g key={day.date}>
+            {/* Bar */}
+            <rect
+              x={cx - barW / 2}
+              y={isPos ? midY - barH : midY}
+              width={barW}
+              height={Math.max(barH, 1)}
+              rx="2"
+              fill={isPos ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'}
+            />
+            {/* P&L label */}
+            <text
+              x={cx} y={isPos ? midY - barH - 5 : midY + barH + 13}
+              textAnchor="middle" fontSize="10" fontFamily="monospace" fontWeight="600"
+              fill={isPos ? '#4ade80' : '#f87171'}
+            >
+              {fmtPnL(day.netPnl)}
+            </text>
+            {/* Day label */}
+            <text x={cx} y={svgH - 10} textAnchor="middle" fontSize="10" fill="#6b7280">
               {weekday} {day.date.slice(8)}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Cumulative line */}
+      <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinejoin="round" />
+      {cumPoints.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#60a5fa" />
+      ))}
+    </svg>
   );
 };
 
