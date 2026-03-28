@@ -300,16 +300,16 @@ const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
       </div>
 
       {/* Weekday headers */}
-      <div className="grid grid-cols-7 gap-1 mb-1">
+      <div className="grid grid-cols-7 gap-1.5 mb-1">
         {weekdays.map(d => (
-          <div key={d} className="text-center text-[10px] text-gray-500 font-medium py-1">{d}</div>
+          <div key={d} className="text-center text-xs text-gray-500 font-medium py-1">{d}</div>
         ))}
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1.5">
         {cells.map((cell, i) => {
-          if (!cell) return <div key={`empty-${i}`} className="aspect-square" />;
+          if (!cell) return <div key={`empty-${i}`} className="min-h-[56px]" />;
 
           const { day, data } = cell;
           const hasTrades = data && data.trades > 0;
@@ -325,15 +325,15 @@ const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
           return (
             <div
               key={cell.date}
-              className={`aspect-square rounded border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center p-0.5`}
+              className={`min-h-[56px] rounded-md border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center py-1.5 px-1`}
             >
-              <span className={`text-[10px] ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
+              <span className={`text-xs ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
               {hasTrades && (
                 <>
-                  <span className={`text-[10px] font-mono font-bold leading-tight ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                    {data.netPnl >= 0 ? '+' : ''}{Math.round(data.netPnl)}
+                  <span className={`text-base font-mono font-bold leading-snug ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                    {data.netPnl >= 0 ? '+' : '-'}${Math.abs(data.netPnl).toFixed(2)}
                   </span>
-                  <span className="text-[8px] text-gray-500 leading-tight">{data.trades}t</span>
+                  <span className="text-xs text-gray-500 leading-snug">{data.trades} trades</span>
                 </>
               )}
             </div>
