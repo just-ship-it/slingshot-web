@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 
 const PnLPanel = () => {
@@ -9,7 +9,7 @@ const PnLPanel = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview'); // overview | trades
+  const [activeTab, setActiveTab] = useState('overview'); // overview | calendar | equity | trades
 
   const loadData = useCallback(async () => {
     try {
@@ -58,6 +58,13 @@ const PnLPanel = () => {
   };
   const pnlColor = (v) => v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-400';
 
+  // Build a map of date -> daily summary for calendar/equity
+  const dailyMap = useMemo(() => {
+    const m = {};
+    daily.forEach(d => { m[d.date] = d; });
+    return m;
+  }, [daily]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -66,20 +73,27 @@ const PnLPanel = () => {
     );
   }
 
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'calendar', label: 'Calendar' },
+    { id: 'equity', label: 'Equity Curve' },
+    { id: 'trades', label: `Trades (${trades.length})` },
+  ];
+
   return (
     <div className="px-4 py-3 space-y-4">
       {/* Header row: tabs + sync */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1">
-          {['overview', 'trades'].map(tab => (
+          {tabs.map(tab => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                activeTab === tab ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
             >
-              {tab === 'overview' ? 'Overview' : `Trades (${trades.length})`}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -138,24 +152,6 @@ const PnLPanel = () => {
             <StatBox label="Total Fees" value={fmtDollar(summary.totalFees)} color="text-gray-400" />
           </div>
 
-          {/* Daily P&L bar chart (horizontal) with cumulative line */}
-          {daily.length > 0 && (
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-300">Daily P&L</h3>
-                {daily[daily.length - 1].cumulativeNetPnl != null && (
-                  <span className="text-xs">
-                    <span className="text-gray-500 mr-1">Cumulative:</span>
-                    <span className={`font-semibold font-mono ${pnlColor(daily[daily.length - 1].cumulativeNetPnl)}`}>
-                      {fmtPnL(daily[daily.length - 1].cumulativeNetPnl)}
-                    </span>
-                  </span>
-                )}
-              </div>
-              <DailyPnLChart daily={daily} fmtPnL={fmtPnL} fmtDollar={fmtDollar} pnlColor={pnlColor} />
-            </div>
-          )}
-
           {/* Win/Loss distribution */}
           {summary.totalTrades > 0 && (
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
@@ -164,7 +160,7 @@ const PnLPanel = () => {
                 {summary.wins > 0 && (
                   <div
                     className="bg-green-500/70 h-full rounded-l flex items-center justify-center text-xs font-semibold text-white"
-                    style={{ width: `${(summary.wins / summary.totalTrades) * 100}%`, minWidth: summary.wins > 0 ? '30px' : 0 }}
+                    style={{ width: `${(summary.wins / summary.totalTrades) * 100}%`, minWidth: '30px' }}
                   >
                     {summary.wins}W
                   </div>
@@ -180,7 +176,7 @@ const PnLPanel = () => {
                 {summary.losses > 0 && (
                   <div
                     className="bg-red-500/70 h-full rounded-r flex items-center justify-center text-xs font-semibold text-white"
-                    style={{ width: `${(summary.losses / summary.totalTrades) * 100}%`, minWidth: summary.losses > 0 ? '30px' : 0 }}
+                    style={{ width: `${(summary.losses / summary.totalTrades) * 100}%`, minWidth: '30px' }}
                   >
                     {summary.losses}L
                   </div>
@@ -193,6 +189,14 @@ const PnLPanel = () => {
             </div>
           )}
         </>
+      )}
+
+      {activeTab === 'calendar' && (
+        <PnLCalendar dailyMap={dailyMap} fmtPnL={fmtPnL} pnlColor={pnlColor} />
+      )}
+
+      {activeTab === 'equity' && (
+        <EquityCurve daily={daily} fmtPnL={fmtPnL} pnlColor={pnlColor} />
       )}
 
       {activeTab === 'trades' && trades.length > 0 && (
@@ -245,6 +249,260 @@ const PnLPanel = () => {
   );
 };
 
+// ─── Calendar View ──────────────────────────────────────────────────────────
+
+const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
+  const [viewDate, setViewDate] = useState(() => new Date());
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthName = viewDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    cells.push({ day: d, date: dateStr, data: dailyMap[dateStr] || null });
+  }
+
+  // Monthly totals
+  const monthDays = cells.filter(c => c?.data);
+  const monthPnl = monthDays.reduce((s, c) => s + c.data.netPnl, 0);
+  const monthTrades = monthDays.reduce((s, c) => s + c.data.trades, 0);
+  const monthWins = monthDays.reduce((s, c) => s + c.data.wins, 0);
+  const monthLosses = monthDays.reduce((s, c) => s + c.data.losses, 0);
+  const tradingDays = monthDays.length;
+  const greenDays = monthDays.filter(c => c.data.netPnl > 0).length;
+  const redDays = monthDays.filter(c => c.data.netPnl < 0).length;
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
+      {/* Month nav */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors">
+          &#8249;
+        </button>
+        <h3 className="text-sm font-semibold text-white">{monthName}</h3>
+        <button onClick={nextMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors">
+          &#8250;
+        </button>
+      </div>
+
+      {/* Weekday headers */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {weekdays.map(d => (
+          <div key={d} className="text-center text-[10px] text-gray-500 font-medium py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((cell, i) => {
+          if (!cell) return <div key={`empty-${i}`} className="aspect-square" />;
+
+          const { day, data } = cell;
+          const hasTrades = data && data.trades > 0;
+          const isToday = cell.date === new Date().toLocaleDateString('en-CA');
+
+          let bg = 'bg-gray-800/40';
+          if (hasTrades) {
+            bg = data.netPnl > 0 ? 'bg-green-900/40 border-green-700/50' :
+                 data.netPnl < 0 ? 'bg-red-900/40 border-red-700/50' :
+                 'bg-gray-700/40 border-gray-600/50';
+          }
+
+          return (
+            <div
+              key={cell.date}
+              className={`aspect-square rounded border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center p-0.5`}
+            >
+              <span className={`text-[10px] ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
+              {hasTrades && (
+                <>
+                  <span className={`text-[10px] font-mono font-bold leading-tight ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                    {data.netPnl >= 0 ? '+' : ''}{Math.round(data.netPnl)}
+                  </span>
+                  <span className="text-[8px] text-gray-500 leading-tight">{data.trades}t</span>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Month summary */}
+      {tradingDays > 0 && (
+        <div className="mt-3 pt-2 border-t border-gray-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className={`font-semibold font-mono ${monthPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {fmtPnL(Math.round(monthPnl * 100) / 100)}
+          </span>
+          <span className="text-gray-500">
+            {monthTrades} trades | {monthWins}W / {monthLosses}L | {greenDays} green / {redDays} red days
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Equity Curve ───────────────────────────────────────────────────────────
+
+const TIMEFRAMES = [
+  { id: 'all', label: 'All' },
+  { id: '1w', label: '1W', days: 7 },
+  { id: '1m', label: '1M', days: 30 },
+  { id: '3m', label: '3M', days: 90 },
+  { id: '6m', label: '6M', days: 180 },
+  { id: '1y', label: '1Y', days: 365 },
+];
+
+const EquityCurve = ({ daily, fmtPnL, pnlColor }) => {
+  const [timeframe, setTimeframe] = useState('all');
+
+  // Filter daily data by timeframe
+  const filtered = useMemo(() => {
+    if (!daily.length) return [];
+    const tf = TIMEFRAMES.find(t => t.id === timeframe);
+    if (!tf?.days) return daily; // 'all'
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - tf.days);
+    const cutoffStr = cutoff.toLocaleDateString('en-CA');
+    return daily.filter(d => d.date >= cutoffStr);
+  }, [daily, timeframe]);
+
+  // Compute cumulative series from filtered data
+  const series = useMemo(() => {
+    let cum = 0;
+    return filtered.map(d => {
+      cum += d.netPnl;
+      return { date: d.date, cumPnl: Math.round(cum * 100) / 100, dayPnl: d.netPnl };
+    });
+  }, [filtered]);
+
+  if (series.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-3 text-center text-gray-500 py-8">
+        No data for selected timeframe
+      </div>
+    );
+  }
+
+  const minPnl = Math.min(0, ...series.map(s => s.cumPnl));
+  const maxPnl = Math.max(0, ...series.map(s => s.cumPnl));
+  const range = maxPnl - minPnl || 1;
+  const finalPnl = series[series.length - 1].cumPnl;
+
+  // SVG dimensions
+  const svgW = 500;
+  const svgH = 200;
+  const padL = 55;
+  const padR = 10;
+  const padT = 15;
+  const padB = 25;
+  const chartW = svgW - padL - padR;
+  const chartH = svgH - padT - padB;
+
+  const toX = (i) => padL + (i / Math.max(series.length - 1, 1)) * chartW;
+  const toY = (v) => padT + (1 - (v - minPnl) / range) * chartH;
+
+  const zeroY = toY(0);
+  const linePath = series.map((s, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(s.cumPnl)}`).join(' ');
+  // Fill area under the line to zero
+  const fillPath = linePath + ` L ${toX(series.length - 1)} ${zeroY} L ${toX(0)} ${zeroY} Z`;
+
+  // Y-axis grid lines (5 levels)
+  const yTicks = [];
+  const step = range / 4;
+  for (let i = 0; i <= 4; i++) {
+    const val = minPnl + step * i;
+    yTicks.push({ val: Math.round(val), y: toY(val) });
+  }
+
+  // X-axis labels (show ~5 dates)
+  const xLabels = [];
+  const labelStep = Math.max(1, Math.floor(series.length / 5));
+  for (let i = 0; i < series.length; i += labelStep) {
+    xLabels.push({ date: series[i].date, x: toX(i) });
+  }
+  // Always include the last date
+  if (xLabels.length === 0 || xLabels[xLabels.length - 1].date !== series[series.length - 1].date) {
+    xLabels.push({ date: series[series.length - 1].date, x: toX(series.length - 1) });
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
+      {/* Header: title + timeframe buttons */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-gray-300">Equity Curve</h3>
+          <span className={`text-sm font-semibold font-mono ${pnlColor(finalPnl)}`}>{fmtPnL(finalPnl)}</span>
+        </div>
+        <div className="flex gap-1">
+          {TIMEFRAMES.map(tf => (
+            <button
+              key={tf.id}
+              onClick={() => setTimeframe(tf.id)}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                timeframe === tf.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ minHeight: 180 }}>
+        {/* Y-axis grid + labels */}
+        {yTicks.map((tick, i) => (
+          <g key={i}>
+            <line x1={padL} y1={tick.y} x2={svgW - padR} y2={tick.y} stroke="#374151" strokeWidth="0.5" />
+            <text x={padL - 5} y={tick.y + 3} textAnchor="end" fontSize="9" fill="#6b7280" fontFamily="monospace">
+              {tick.val >= 0 ? '+' : ''}{tick.val.toLocaleString()}
+            </text>
+          </g>
+        ))}
+
+        {/* Zero line (emphasized) */}
+        <line x1={padL} y1={zeroY} x2={svgW - padR} y2={zeroY} stroke="#6b7280" strokeWidth="0.8" strokeDasharray="4,3" />
+
+        {/* Fill under curve */}
+        <path d={fillPath} fill={finalPnl >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'} />
+
+        {/* Equity line */}
+        <path d={linePath} fill="none" stroke={finalPnl >= 0 ? '#22c55e' : '#ef4444'} strokeWidth="2" strokeLinejoin="round" />
+
+        {/* Endpoint dot */}
+        <circle
+          cx={toX(series.length - 1)} cy={toY(finalPnl)}
+          r="3" fill={finalPnl >= 0 ? '#22c55e' : '#ef4444'}
+        />
+
+        {/* X-axis labels */}
+        {xLabels.map((lbl, i) => (
+          <text key={i} x={lbl.x} y={svgH - 5} textAnchor="middle" fontSize="9" fill="#6b7280">
+            {lbl.date.slice(5)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+// ─── Shared small components ────────────────────────────────────────────────
+
 const SummaryCard = ({ label, value, sub, color = 'text-white', large }) => (
   <div className="bg-gray-800 rounded-lg border border-gray-700 px-3 py-2">
     <div className="text-xs text-gray-400 mb-0.5">{label}</div>
@@ -259,76 +517,6 @@ const StatBox = ({ label, value, color = 'text-white' }) => (
     <div className={`text-sm font-semibold font-mono ${color}`}>{value}</div>
   </div>
 );
-
-const DailyPnLChart = ({ daily, fmtPnL, pnlColor }) => {
-  const maxPnl = Math.max(...daily.map(d => Math.abs(d.netPnl)), 1);
-  const maxCum = Math.max(...daily.map(d => Math.abs(d.cumulativeNetPnl || 0)), 1);
-
-  // Use SVG for everything so bars and line share the same coordinate system
-  const n = daily.length;
-  const svgW = 400;
-  const svgH = 200;
-  const padTop = 22;   // room for labels above bars
-  const padBot = 30;   // room for labels + day names below
-  const chartH = svgH - padTop - padBot;
-  const midY = padTop + chartH / 2;
-  const colW = svgW / n;
-  const barW = Math.min(colW * 0.55, 50);
-  const maxBarH = chartH / 2 * 0.85;
-
-  const cumPoints = daily.map((d, i) => ({
-    x: colW * i + colW / 2,
-    y: midY - ((d.cumulativeNetPnl || 0) / maxCum) * maxBarH,
-  }));
-  const linePath = cumPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-
-  return (
-    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ minHeight: 160 }}>
-      {/* Zero line */}
-      <line x1="0" y1={midY} x2={svgW} y2={midY} stroke="#4b5563" strokeWidth="0.5" />
-
-      {/* Bars + labels */}
-      {daily.map((day, i) => {
-        const cx = colW * i + colW / 2;
-        const barH = (Math.abs(day.netPnl) / maxPnl) * maxBarH;
-        const isPos = day.netPnl >= 0;
-        const weekday = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-
-        return (
-          <g key={day.date}>
-            {/* Bar */}
-            <rect
-              x={cx - barW / 2}
-              y={isPos ? midY - barH : midY}
-              width={barW}
-              height={Math.max(barH, 1)}
-              rx="2"
-              fill={isPos ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'}
-            />
-            {/* P&L label */}
-            <text
-              x={cx} y={isPos ? midY - barH - 5 : midY + barH + 13}
-              textAnchor="middle" fontSize="10" fontFamily="monospace" fontWeight="600"
-              fill={isPos ? '#4ade80' : '#f87171'}
-            >
-              {fmtPnL(day.netPnl)}
-            </text>
-            {/* Day label */}
-            <text x={cx} y={svgH - 10} textAnchor="middle" fontSize="10" fill="#6b7280">
-              {weekday} {day.date.slice(8)}
-            </text>
-          </g>
-        );
-      })}
-
-      {/* Cumulative line */}
-      <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinejoin="round" />
-      {cumPoints.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#60a5fa" />
-      ))}
-    </svg>
-  );
-};
 
 function formatTime(iso) {
   if (!iso) return '--';
