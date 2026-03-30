@@ -227,8 +227,8 @@ const ShortDTEIVPanel = ({ socket, quotes }) => {
           {provider && (
             <span className="text-gray-300 ml-auto">
               {provider.ready
-                ? `${provider.snapshots} buffered`
-                : `Warming up (${provider.snapshots}/${provider.snapshotsNeeded ?? 2})`
+                ? `${provider.periods ?? provider.snapshots} buffered`
+                : `Warming up (${provider.periods ?? provider.snapshots}/${provider.periodsNeeded ?? provider.snapshotsNeeded ?? 2})`
               }
             </span>
           )}
