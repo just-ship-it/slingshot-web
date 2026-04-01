@@ -289,9 +289,8 @@ const PnLCalendar = ({ dailyMap, daily, fmtPnL, pnlColor }) => {
   const cumByDate = {};
   for (const d of activeDays) { cum += d.netPnl; cumByDate[d.date] = cum; }
 
-  // Calendar grid (month mode only, desktop only)
-  const cells = useMemo(() => {
-    if (mode !== 'month') return [];
+  // Calendar grid cells for month mode
+  const monthCells = useMemo(() => {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const c = [];
@@ -301,7 +300,25 @@ const PnLCalendar = ({ dailyMap, daily, fmtPnL, pnlColor }) => {
       c.push({ day: d, date: dateStr, data: dailyMap[dateStr] || null });
     }
     return c;
-  }, [mode, year, month, dailyMap]);
+  }, [year, month, dailyMap]);
+
+  // Calendar grid cells for recent mode (rolling ~3 week window ending today)
+  const recentCells = useMemo(() => {
+    const today = new Date();
+    // Go back 20 days, then back to the previous Sunday to start the grid
+    const start = new Date(today);
+    start.setDate(start.getDate() - 20);
+    start.setDate(start.getDate() - start.getDay()); // back to Sunday
+
+    const c = [];
+    const d = new Date(start);
+    while (d <= today) {
+      const dateStr = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+      c.push({ day: d.getDate(), date: dateStr, data: dailyMap[dateStr] || null, month: d.getMonth() });
+      d.setDate(d.getDate() + 1);
+    }
+    return c;
+  }, [dailyMap]);
 
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -350,48 +367,45 @@ const PnLCalendar = ({ dailyMap, daily, fmtPnL, pnlColor }) => {
         </button>
       </div>
 
-      {/* Desktop view */}
+      {/* Desktop view: always calendar grid */}
       <div className="hidden md:block">
-        {mode === 'month' ? (
-          <>
-            {/* Calendar grid */}
-            <div className="grid grid-cols-7 gap-1.5 mb-1">
-              {weekdays.map(d => (
-                <div key={d} className="text-center text-xs text-gray-500 font-medium py-1">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1.5">
-              {cells.map((cell, i) => {
-                if (!cell) return <div key={`empty-${i}`} className="min-h-[56px]" />;
-                const { day, data } = cell;
-                const hasTrades = data && data.trades > 0;
-                const isToday = cell.date === new Date().toLocaleDateString('en-CA');
-                let bg = 'bg-gray-800/40';
-                if (hasTrades) {
-                  bg = data.netPnl > 0 ? 'bg-green-900/40 border-green-700/50' :
-                       data.netPnl < 0 ? 'bg-red-900/40 border-red-700/50' :
-                       'bg-gray-700/40 border-gray-600/50';
-                }
-                return (
-                  <div key={cell.date} className={`min-h-[56px] rounded-md border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center py-1.5 px-1`}>
-                    <span className={`text-xs ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
-                    {hasTrades && (
-                      <>
-                        <span className={`text-base font-mono font-bold leading-snug ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                          {data.netPnl >= 0 ? '+' : '-'}${Math.abs(data.netPnl).toFixed(2)}
-                        </span>
-                        <span className="text-xs text-gray-500 leading-snug">{data.trades} trades</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          /* Recent: desktop list (same style as mobile but wider) */
-          <DailyList days={listDays} maxPnl={maxPnl} cumByDate={cumByDate} />
-        )}
+        <div className="grid grid-cols-7 gap-1.5 mb-1">
+          {weekdays.map(d => (
+            <div key={d} className="text-center text-xs text-gray-500 font-medium py-1">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {(mode === 'month' ? monthCells : recentCells).map((cell, i) => {
+            if (!cell) return <div key={`empty-${i}`} className="min-h-[56px]" />;
+            const { day, data } = cell;
+            const hasTrades = data && data.trades > 0;
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            const isToday = cell.date === todayStr;
+            // In recent mode, dim days from a different month than today
+            const isCurrentMonth = mode !== 'recent' || cell.month === new Date().getMonth();
+            let bg = 'bg-gray-800/40';
+            if (hasTrades) {
+              bg = data.netPnl > 0 ? 'bg-green-900/40 border-green-700/50' :
+                   data.netPnl < 0 ? 'bg-red-900/40 border-red-700/50' :
+                   'bg-gray-700/40 border-gray-600/50';
+            }
+            return (
+              <div key={cell.date} className={`min-h-[56px] rounded-md border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center py-1.5 px-1`}>
+                <span className={`text-xs ${hasTrades ? 'text-gray-300' : isCurrentMonth ? 'text-gray-600' : 'text-gray-700'}`}>
+                  {mode === 'recent' && day === 1 ? `${cell.date.slice(5, 7)}/${day}` : day}
+                </span>
+                {hasTrades && (
+                  <>
+                    <span className={`text-base font-mono font-bold leading-snug ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                      {data.netPnl >= 0 ? '+' : '-'}${Math.abs(data.netPnl).toFixed(2)}
+                    </span>
+                    <span className="text-xs text-gray-500 leading-snug">{data.trades} trades</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
         {summaryBar}
       </div>
 
