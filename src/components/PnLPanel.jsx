@@ -192,7 +192,7 @@ const PnLPanel = () => {
       )}
 
       {activeTab === 'calendar' && (
-        <PnLCalendar dailyMap={dailyMap} fmtPnL={fmtPnL} pnlColor={pnlColor} />
+        <PnLCalendar dailyMap={dailyMap} daily={daily} fmtPnL={fmtPnL} pnlColor={pnlColor} />
       )}
 
       {activeTab === 'equity' && (
@@ -250,8 +250,9 @@ const PnLPanel = () => {
 };
 
 // ─── Calendar View ──────────────────────────────────────────────────────────
+// Desktop: month grid calendar. Mobile: scrollable daily list.
 
-const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
+const PnLCalendar = ({ dailyMap, daily, fmtPnL, pnlColor }) => {
   const [viewDate, setViewDate] = useState(() => new Date());
 
   const year = viewDate.getFullYear();
@@ -259,13 +260,10 @@ const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
   const monthName = viewDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   // Build calendar grid
-  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells = [];
-
-  // Empty cells before first day
   for (let i = 0; i < firstDay; i++) cells.push(null);
-  // Day cells
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     cells.push({ day: d, date: dateStr, data: dailyMap[dateStr] || null });
@@ -277,81 +275,141 @@ const PnLCalendar = ({ dailyMap, fmtPnL, pnlColor }) => {
   const monthTrades = monthDays.reduce((s, c) => s + c.data.trades, 0);
   const monthWins = monthDays.reduce((s, c) => s + c.data.wins, 0);
   const monthLosses = monthDays.reduce((s, c) => s + c.data.losses, 0);
-  const tradingDays = monthDays.length;
   const greenDays = monthDays.filter(c => c.data.netPnl > 0).length;
   const redDays = monthDays.filter(c => c.data.netPnl < 0).length;
 
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
 
+  // Mobile list: filter daily data for the selected month
+  const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const monthDailyList = daily
+    .filter(d => d.date.startsWith(monthStr))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  // Running cumulative for the month
+  const monthCumulative = daily
+    .filter(d => d.date.startsWith(monthStr))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  let cum = 0;
+  const cumByDate = {};
+  for (const d of monthCumulative) { cum += d.netPnl; cumByDate[d.date] = cum; }
+
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const monthSummary = monthDays.length > 0 && (
+    <div className="mt-3 pt-2 border-t border-gray-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <span className={`font-semibold font-mono ${monthPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        {fmtPnL(Math.round(monthPnl * 100) / 100)}
+      </span>
+      <span className="text-gray-500">
+        {monthTrades} trades | {monthWins}W / {monthLosses}L | {greenDays} green / {redDays} red days
+      </span>
+    </div>
+  );
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
       {/* Month nav */}
       <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors">
+        <button onClick={prevMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors text-lg">
           &#8249;
         </button>
         <h3 className="text-sm font-semibold text-white">{monthName}</h3>
-        <button onClick={nextMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors">
+        <button onClick={nextMonth} className="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors text-lg">
           &#8250;
         </button>
       </div>
 
-      {/* Weekday headers */}
-      <div className="grid grid-cols-7 gap-1.5 mb-1">
-        {weekdays.map(d => (
-          <div key={d} className="text-center text-xs text-gray-500 font-medium py-1">{d}</div>
-        ))}
-      </div>
-
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1.5">
-        {cells.map((cell, i) => {
-          if (!cell) return <div key={`empty-${i}`} className="min-h-[56px]" />;
-
-          const { day, data } = cell;
-          const hasTrades = data && data.trades > 0;
-          const isToday = cell.date === new Date().toLocaleDateString('en-CA');
-
-          let bg = 'bg-gray-800/40';
-          if (hasTrades) {
-            bg = data.netPnl > 0 ? 'bg-green-900/40 border-green-700/50' :
-                 data.netPnl < 0 ? 'bg-red-900/40 border-red-700/50' :
-                 'bg-gray-700/40 border-gray-600/50';
-          }
-
-          return (
-            <div
-              key={cell.date}
-              className={`min-h-[56px] rounded-md border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center py-1.5 px-1`}
-            >
-              <span className={`text-xs ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
-              {hasTrades && (
-                <>
-                  <span className={`text-base font-mono font-bold leading-snug ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                    {data.netPnl >= 0 ? '+' : '-'}${Math.abs(data.netPnl).toFixed(2)}
-                  </span>
-                  <span className="text-xs text-gray-500 leading-snug">{data.trades} trades</span>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Month summary */}
-      {tradingDays > 0 && (
-        <div className="mt-3 pt-2 border-t border-gray-700 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className={`font-semibold font-mono ${monthPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {fmtPnL(Math.round(monthPnl * 100) / 100)}
-          </span>
-          <span className="text-gray-500">
-            {monthTrades} trades | {monthWins}W / {monthLosses}L | {greenDays} green / {redDays} red days
-          </span>
+      {/* Desktop: Calendar grid */}
+      <div className="hidden md:block">
+        <div className="grid grid-cols-7 gap-1.5 mb-1">
+          {weekdays.map(d => (
+            <div key={d} className="text-center text-xs text-gray-500 font-medium py-1">{d}</div>
+          ))}
         </div>
-      )}
+        <div className="grid grid-cols-7 gap-1.5">
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={`empty-${i}`} className="min-h-[56px]" />;
+            const { day, data } = cell;
+            const hasTrades = data && data.trades > 0;
+            const isToday = cell.date === new Date().toLocaleDateString('en-CA');
+            let bg = 'bg-gray-800/40';
+            if (hasTrades) {
+              bg = data.netPnl > 0 ? 'bg-green-900/40 border-green-700/50' :
+                   data.netPnl < 0 ? 'bg-red-900/40 border-red-700/50' :
+                   'bg-gray-700/40 border-gray-600/50';
+            }
+            return (
+              <div key={cell.date} className={`min-h-[56px] rounded-md border ${bg} ${isToday ? 'ring-1 ring-blue-500' : 'border-gray-700/30'} flex flex-col items-center justify-center py-1.5 px-1`}>
+                <span className={`text-xs ${hasTrades ? 'text-gray-300' : 'text-gray-600'}`}>{day}</span>
+                {hasTrades && (
+                  <>
+                    <span className={`text-base font-mono font-bold leading-snug ${data.netPnl > 0 ? 'text-green-400' : data.netPnl < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                      {data.netPnl >= 0 ? '+' : '-'}${Math.abs(data.netPnl).toFixed(2)}
+                    </span>
+                    <span className="text-xs text-gray-500 leading-snug">{data.trades} trades</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {monthSummary}
+      </div>
+
+      {/* Mobile: Daily list */}
+      <div className="md:hidden">
+        {monthDailyList.length === 0 ? (
+          <div className="text-center text-gray-500 text-sm py-6">No trading days this month</div>
+        ) : (
+          <div className="space-y-1.5">
+            {monthDailyList.map(day => {
+              const dateObj = new Date(day.date + 'T12:00:00');
+              const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+              const dayNum = dateObj.getDate();
+              const isPos = day.netPnl >= 0;
+              const cumVal = cumByDate[day.date] || 0;
+              const maxPnl = Math.max(...monthDailyList.map(d => Math.abs(d.netPnl)), 1);
+              const barWidth = Math.min((Math.abs(day.netPnl) / maxPnl) * 100, 100);
+
+              return (
+                <div
+                  key={day.date}
+                  className={`rounded-md border px-3 py-2 ${
+                    isPos ? 'bg-green-900/30 border-green-700/40' : 'bg-red-900/30 border-red-700/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-400 w-14">{weekday} {dayNum}</span>
+                      <span className={`text-base font-mono font-bold ${isPos ? 'text-green-400' : 'text-red-400'}`}>
+                        {day.netPnl >= 0 ? '+' : '-'}${Math.abs(day.netPnl).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs text-gray-400">{day.trades}t {day.wins}W/{day.losses}L</span>
+                    </div>
+                  </div>
+                  {/* Mini bar + cumulative */}
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${isPos ? 'bg-green-500/60' : 'bg-red-500/60'}`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] font-mono ${cumVal >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                      cum {cumVal >= 0 ? '+' : '-'}${Math.abs(Math.round(cumVal * 100) / 100).toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {monthSummary}
+      </div>
     </div>
   );
 };
