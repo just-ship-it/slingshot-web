@@ -678,6 +678,21 @@ export const api = {
     }
   },
 
+  // Connector management endpoints
+  async getConnectorStatus() {
+    try {
+      return await apiClient.get('/api/connectors/status');
+    } catch (error) {
+      console.error('Failed to get connector status:', error);
+      return { connectors: {}, routes: {} };
+    }
+  },
+
+  async setConnectorEnabled(name, enabled) {
+    const endpoint = `/api/connectors/${name}/${enabled ? 'enable' : 'disable'}`;
+    return await apiClient.post(endpoint);
+  },
+
   // Position sizing endpoints
   async getPositionSizingSettings() {
     return await apiClient.get('/api/position-sizing/settings');

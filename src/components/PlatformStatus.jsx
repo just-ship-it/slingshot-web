@@ -6,6 +6,10 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [isKillSwitchLoading, setIsKillSwitchLoading] = useState(false);
 
+  // Connectors (e.g., PickMyTrade)
+  const [connectors, setConnectors] = useState({});
+  const [connectorLoading, setConnectorLoading] = useState(null);
+
   // Position sizing
   const [positionSizingSettings, setPositionSizingSettings] = useState({
     method: 'fixed', fixedQuantity: 1, riskPercentage: 10, maxContracts: 10, contractType: 'auto'
@@ -60,6 +64,15 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       setTradingEnabled(response.tradingEnabled);
     } catch (error) {
       console.error('Failed to load kill switch status:', error);
+    }
+  };
+
+  const loadConnectorStatus = async () => {
+    try {
+      const response = await api.getConnectorStatus();
+      setConnectors(response.connectors || {});
+    } catch (error) {
+      console.error('Failed to load connector status:', error);
     }
   };
 
@@ -237,6 +250,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   useEffect(() => {
     Promise.all([
       loadKillSwitchStatus(),
+      loadConnectorStatus(),
       loadPositionSizingSettings(),
       loadMarginSettings(),
       checkMicroserviceHealth(),
@@ -293,6 +307,14 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     const handleKillSwitchChanged = (data) => {
       setTradingEnabled(data.enabled);
       setRelayLogs(prev => [...prev, { timestamp: data.timestamp, type: 'kill_switch', data: data.enabled ? 'Trading ENABLED' : 'Trading DISABLED (Kill Switch Active)' }].slice(0, 100));
+    };
+
+    const handleConnectorStatusChanged = (data) => {
+      setConnectors(prev => ({
+        ...prev,
+        [data.connector]: { ...prev[data.connector], enabled: data.enabled }
+      }));
+      setRelayLogs(prev => [...prev, { timestamp: data.timestamp, type: 'connector', data: `${data.connector} ${data.enabled ? 'ENABLED' : 'DISABLED'}` }].slice(0, 100));
     };
 
     const handleWebhookBlocked = (data) => {
@@ -358,6 +380,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     socket.socket.on('webhook_received', handleWebhookReceived);
     socket.socket.on('webhook_error', handleWebhookError);
     socket.socket.on('kill_switch_changed', handleKillSwitchChanged);
+    socket.socket.on('connector_status_changed', handleConnectorStatusChanged);
     socket.socket.on('webhook_blocked', handleWebhookBlocked);
     socket.socket.on('service_restart_initiated', handleServiceRestartInitiated);
     socket.socket.on('service_restart_success', handleServiceRestartSuccess);
@@ -378,6 +401,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       socket.socket.off('webhook_received', handleWebhookReceived);
       socket.socket.off('webhook_error', handleWebhookError);
       socket.socket.off('kill_switch_changed', handleKillSwitchChanged);
+      socket.socket.off('connector_status_changed', handleConnectorStatusChanged);
       socket.socket.off('webhook_blocked', handleWebhookBlocked);
       socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
       socket.socket.off('service_restart_success', handleServiceRestartSuccess);
@@ -406,6 +430,22 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       alert(`Failed to ${newState ? 'enable' : 'disable'} trading: ${error.message}`);
     } finally {
       setIsKillSwitchLoading(false);
+    }
+  };
+
+  const handleConnectorToggle = async (name) => {
+    const current = connectors[name];
+    if (!current) return;
+    const newState = !current.enabled;
+    setConnectorLoading(name);
+    try {
+      await api.setConnectorEnabled(name, newState);
+      setConnectors(prev => ({ ...prev, [name]: { ...prev[name], enabled: newState } }));
+    } catch (error) {
+      console.error(`Failed to toggle connector ${name}:`, error);
+      alert(`Failed to ${newState ? 'enable' : 'disable'} ${name}: ${error.message}`);
+    } finally {
+      setConnectorLoading(null);
     }
   };
 
@@ -518,6 +558,34 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                   {isKillSwitchLoading ? '...' : tradingEnabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
+              {Object.entries(connectors).map(([name, conn]) => (
+                <React.Fragment key={name}>
+                  <span className="text-gray-600">|</span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-300">{name === 'pickmytrade' ? 'PMT' : name}:</span>
+                    <button
+                      onClick={() => handleConnectorToggle(name)}
+                      disabled={connectorLoading === name}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                        conn.enabled ? 'bg-green-600' : 'bg-gray-600'
+                      }`}
+                      role="switch"
+                      aria-checked={conn.enabled}
+                      aria-label={`${name} connector is ${conn.enabled ? 'enabled' : 'disabled'}`}
+                    >
+                      <span className="sr-only">Toggle {name}</span>
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+                          conn.enabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-xs font-medium ${conn.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                      {connectorLoading === name ? '...' : conn.enabled ? 'On' : 'Off'}
+                    </span>
+                  </div>
+                </React.Fragment>
+              ))}
               <span className="text-gray-600">|</span>
               <span className="text-sm text-blue-400 font-medium">
                 {positionSizingSettings?.method === 'fixed'
