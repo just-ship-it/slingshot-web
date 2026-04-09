@@ -678,19 +678,19 @@ export const api = {
     }
   },
 
-  // Connector management endpoints
-  async getConnectorStatus() {
+  // Order routing management endpoints
+  async getRoutingConfig() {
     try {
-      return await apiClient.get('/api/connectors/status');
+      return await apiClient.get('/api/routing/config');
     } catch (error) {
-      console.error('Failed to get connector status:', error);
-      return { connectors: {}, routes: {} };
+      console.error('Failed to get routing config:', error);
+      return { routes: {}, availableDestinations: [], defaultDestinations: [] };
     }
   },
 
-  async setConnectorEnabled(name, enabled) {
-    const endpoint = `/api/connectors/${name}/${enabled ? 'enable' : 'disable'}`;
-    return await apiClient.post(endpoint);
+  async setStrategyDestination(strategyName, destination, enabled) {
+    const action = enabled ? 'enable' : 'disable';
+    return await apiClient.post(`/api/routing/strategy/${strategyName}/destination/${destination}/${action}`);
   },
 
   // Position sizing endpoints

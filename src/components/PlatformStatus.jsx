@@ -6,9 +6,9 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [isKillSwitchLoading, setIsKillSwitchLoading] = useState(false);
 
-  // Connectors (e.g., PickMyTrade)
-  const [connectors, setConnectors] = useState({});
-  const [connectorLoading, setConnectorLoading] = useState(null);
+  // Order routing config (per-strategy destination toggles)
+  const [routingConfig, setRoutingConfig] = useState({ routes: {}, availableDestinations: [], defaultDestinations: [] });
+  const [routingToggleLoading, setRoutingToggleLoading] = useState(null);
 
   // Position sizing
   const [positionSizingSettings, setPositionSizingSettings] = useState({
@@ -67,12 +67,12 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     }
   };
 
-  const loadConnectorStatus = async () => {
+  const loadRoutingConfig = async () => {
     try {
-      const response = await api.getConnectorStatus();
-      setConnectors(response.connectors || {});
+      const response = await api.getRoutingConfig();
+      setRoutingConfig(response);
     } catch (error) {
-      console.error('Failed to load connector status:', error);
+      console.error('Failed to load routing config:', error);
     }
   };
 
@@ -250,7 +250,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   useEffect(() => {
     Promise.all([
       loadKillSwitchStatus(),
-      loadConnectorStatus(),
+      loadRoutingConfig(),
       loadPositionSizingSettings(),
       loadMarginSettings(),
       checkMicroserviceHealth(),
@@ -309,12 +309,10 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       setRelayLogs(prev => [...prev, { timestamp: data.timestamp, type: 'kill_switch', data: data.enabled ? 'Trading ENABLED' : 'Trading DISABLED (Kill Switch Active)' }].slice(0, 100));
     };
 
-    const handleConnectorStatusChanged = (data) => {
-      setConnectors(prev => ({
-        ...prev,
-        [data.connector]: { ...prev[data.connector], enabled: data.enabled }
-      }));
-      setRelayLogs(prev => [...prev, { timestamp: data.timestamp, type: 'connector', data: `${data.connector} ${data.enabled ? 'ENABLED' : 'DISABLED'}` }].slice(0, 100));
+    const handleRoutingConfigChanged = (data) => {
+      if (data.config) {
+        setRoutingConfig(prev => ({ ...prev, ...data.config }));
+      }
     };
 
     const handleWebhookBlocked = (data) => {
@@ -380,7 +378,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     socket.socket.on('webhook_received', handleWebhookReceived);
     socket.socket.on('webhook_error', handleWebhookError);
     socket.socket.on('kill_switch_changed', handleKillSwitchChanged);
-    socket.socket.on('connector_status_changed', handleConnectorStatusChanged);
+    socket.socket.on('routing_config_changed', handleRoutingConfigChanged);
     socket.socket.on('webhook_blocked', handleWebhookBlocked);
     socket.socket.on('service_restart_initiated', handleServiceRestartInitiated);
     socket.socket.on('service_restart_success', handleServiceRestartSuccess);
@@ -401,7 +399,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       socket.socket.off('webhook_received', handleWebhookReceived);
       socket.socket.off('webhook_error', handleWebhookError);
       socket.socket.off('kill_switch_changed', handleKillSwitchChanged);
-      socket.socket.off('connector_status_changed', handleConnectorStatusChanged);
+      socket.socket.off('routing_config_changed', handleRoutingConfigChanged);
       socket.socket.off('webhook_blocked', handleWebhookBlocked);
       socket.socket.off('service_restart_initiated', handleServiceRestartInitiated);
       socket.socket.off('service_restart_success', handleServiceRestartSuccess);
@@ -433,19 +431,26 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     }
   };
 
-  const handleConnectorToggle = async (name) => {
-    const current = connectors[name];
-    if (!current) return;
-    const newState = !current.enabled;
-    setConnectorLoading(name);
+  const handleRoutingToggle = async (strategyName, destination, currentlyEnabled) => {
+    const key = `${strategyName}:${destination}`;
+    setRoutingToggleLoading(key);
     try {
-      await api.setConnectorEnabled(name, newState);
-      setConnectors(prev => ({ ...prev, [name]: { ...prev[name], enabled: newState } }));
+      await api.setStrategyDestination(strategyName, destination, !currentlyEnabled);
+      // Optimistic update
+      setRoutingConfig(prev => {
+        const newRoutes = { ...prev.routes };
+        const currentDests = newRoutes[strategyName] || [...(prev.defaultDestinations || [])];
+        if (currentlyEnabled) {
+          newRoutes[strategyName] = currentDests.filter(d => d !== destination);
+        } else {
+          newRoutes[strategyName] = [...currentDests, destination];
+        }
+        return { ...prev, routes: newRoutes };
+      });
     } catch (error) {
-      console.error(`Failed to toggle connector ${name}:`, error);
-      alert(`Failed to ${newState ? 'enable' : 'disable'} ${name}: ${error.message}`);
+      console.error(`Failed to toggle ${destination} for ${strategyName}:`, error);
     } finally {
-      setConnectorLoading(null);
+      setRoutingToggleLoading(null);
     }
   };
 
@@ -558,34 +563,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                   {isKillSwitchLoading ? '...' : tradingEnabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
-              {Object.entries(connectors).map(([name, conn]) => (
-                <React.Fragment key={name}>
-                  <span className="text-gray-600">|</span>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-300">{name === 'pickmytrade' ? 'PMT' : name}:</span>
-                    <button
-                      onClick={() => handleConnectorToggle(name)}
-                      disabled={connectorLoading === name}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                        conn.enabled ? 'bg-green-600' : 'bg-gray-600'
-                      }`}
-                      role="switch"
-                      aria-checked={conn.enabled}
-                      aria-label={`${name} connector is ${conn.enabled ? 'enabled' : 'disabled'}`}
-                    >
-                      <span className="sr-only">Toggle {name}</span>
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
-                          conn.enabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                    <span className={`text-xs font-medium ${conn.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                      {connectorLoading === name ? '...' : conn.enabled ? 'On' : 'Off'}
-                    </span>
-                  </div>
-                </React.Fragment>
-              ))}
               <span className="text-gray-600">|</span>
               <span className="text-sm text-blue-400 font-medium">
                 {positionSizingSettings?.method === 'fixed'
@@ -1109,6 +1086,33 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                         <div><span className="text-gray-400">Timeframe:</span> <span className="text-white">{s.eval_timeframe}</span></div>
                         <div><span className="text-gray-400">Symbol:</span> <span className="text-white">{s.trading_symbol}</span></div>
                       </div>
+                      {routingConfig.availableDestinations?.length > 0 && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span className="text-xs text-gray-400">Routes:</span>
+                          {routingConfig.availableDestinations.map(dest => {
+                            const strategyDests = routingConfig.routes?.[s.constant] || routingConfig.defaultDestinations || [];
+                            const isActive = strategyDests.includes(dest);
+                            const loadingKey = `${s.constant}:${dest}`;
+                            const label = dest === 'tradovate-demo' ? 'Demo' : dest === 'tradovate-live' ? 'Live' : dest === 'pickmytrade' ? 'PMT' : dest;
+                            return (
+                              <button
+                                key={dest}
+                                onClick={() => handleRoutingToggle(s.constant, dest, isActive)}
+                                disabled={routingToggleLoading === loadingKey}
+                                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                  routingToggleLoading === loadingKey ? 'opacity-50 cursor-not-allowed' :
+                                  isActive
+                                    ? 'bg-green-700/60 text-green-300 hover:bg-green-600/60'
+                                    : 'bg-gray-700/60 text-gray-500 hover:bg-gray-600/60'
+                                }`}
+                                title={`${isActive ? 'Disable' : 'Enable'} ${dest} for ${s.constant}`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                       {s.evaluation_readiness?.blockers?.length > 0 && (
                         <div className="mt-1 text-xs text-red-400">
                           Blockers: {s.evaluation_readiness.blockers.join(', ')}
