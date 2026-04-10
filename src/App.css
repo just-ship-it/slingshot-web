@@ -133,7 +133,7 @@
 /* Split layout: left panels + right chart */
 .dashboard-split {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
+  grid-template-columns: 1fr 2fr;
   height: 100%;
   min-height: 0;
   padding: 4px;

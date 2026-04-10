@@ -183,63 +183,31 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
             )}
           </div>
 
-          {/* Comparison Table */}
-          <div className="overflow-hidden rounded border border-gray-700">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="bg-gray-700">
-                  <th className="text-left text-gray-300 font-medium px-1.5 py-0.5">Level</th>
-                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">CBOE</th>
-                  <th className="text-right text-gray-300 font-medium px-1.5 py-0.5">Schwab</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Main levels */}
-                {mainLevels.map((row, i) => (
-                  <tr key={row.key} className={i % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
-                    <td className={`px-1.5 py-0.5 ${row.color}`}>{row.label}</td>
-                    <td className={`text-right font-mono px-1.5 py-0.5 ${row.color}`}>
-                      {formatLevel(getCboeValue(row.key))}
-                    </td>
-                    <td className={`text-right font-mono px-1.5 py-0.5 ${row.color}`}>
-                      {formatLevel(getTradierValue(row.key))}
-                    </td>
-                  </tr>
-                ))}
-                {/* Resistances section header */}
-                <tr className="bg-gray-700">
-                  <td colSpan={3} className="px-1.5 py-0.5 text-orange-400 font-medium">Resistances</td>
-                </tr>
-                {/* Resistance values - high to low */}
-                {[5, 4, 3, 2, 1].map((n, i) => (
-                  <tr key={`r${n}`} className={i % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
-                    <td className="px-1.5 py-0.5 text-orange-400 text-gray-500"></td>
-                    <td className="text-right font-mono px-1.5 py-0.5 text-orange-400">
-                      {formatLevel(getCboeValue(`r${n}`))}
-                    </td>
-                    <td className="text-right font-mono px-1.5 py-0.5 text-orange-400">
-                      {formatLevel(getTradierValue(`r${n}`))}
-                    </td>
-                  </tr>
-                ))}
-                {/* Supports section header */}
-                <tr className="bg-gray-700">
-                  <td colSpan={3} className="px-1.5 py-0.5 text-cyan-400 font-medium">Supports</td>
-                </tr>
-                {/* Support values */}
-                {[1, 2, 3, 4, 5].map((n, i) => (
-                  <tr key={`s${n}`} className={i % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
-                    <td className="px-1.5 py-0.5 text-cyan-400"></td>
-                    <td className="text-right font-mono px-1.5 py-0.5 text-cyan-400">
-                      {formatLevel(getCboeValue(`s${n}`))}
-                    </td>
-                    <td className="text-right font-mono px-1.5 py-0.5 text-cyan-400">
-                      {formatLevel(getTradierValue(`s${n}`))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Compact Levels */}
+          <div className="space-y-1 text-[12px]">
+            {/* Key levels: CW / ZG / PW */}
+            <div className="grid grid-cols-3 gap-1">
+              {mainLevels.map(row => (
+                <div key={row.key} className="bg-gray-700 rounded px-1.5 py-0.5 text-center">
+                  <div className="text-gray-400 text-[10px]">{row.label}</div>
+                  <div className={`font-mono font-semibold ${row.color}`}>{formatLevel(getTradierValue(row.key) || getCboeValue(row.key))}</div>
+                </div>
+              ))}
+            </div>
+            {/* Resistance levels - inline */}
+            <div className="bg-gray-700/50 rounded px-1.5 py-0.5">
+              <span className="text-orange-400 font-medium">R: </span>
+              <span className="font-mono text-orange-400">
+                {[1, 2, 3, 4, 5].map(n => formatLevel(getTradierValue(`r${n}`) || getCboeValue(`r${n}`))).filter(v => v !== '-').join(' · ')}
+              </span>
+            </div>
+            {/* Support levels - inline */}
+            <div className="bg-gray-700/50 rounded px-1.5 py-0.5">
+              <span className="text-cyan-400 font-medium">S: </span>
+              <span className="font-mono text-cyan-400">
+                {[1, 2, 3, 4, 5].map(n => formatLevel(getTradierValue(`s${n}`) || getCboeValue(`s${n}`))).filter(v => v !== '-').join(' · ')}
+              </span>
+            </div>
           </div>
 
           {/* Copy Buttons */}
