@@ -29,7 +29,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   // Microservice health
   const [microserviceHealth, setMicroserviceHealth] = useState({});
   const [signalGeneratorConnections, setSignalGeneratorConnections] = useState(null);
-  const [sgConnectionsExpanded, setSgConnectionsExpanded] = useState(false);
+  const [sgConnectionsExpanded, setSgConnectionsExpanded] = useState(true);
   const [macroBriefingHealth, setMacroBriefingHealth] = useState(null);
   const [isBriefingGenerating, setIsBriefingGenerating] = useState(false);
 
@@ -639,8 +639,8 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
             </div>
           ))}
 
-          {/* Macro Briefing - Enhanced Card */}
-          {microserviceHealth['macro-briefing'] && (
+          {/* Macro Briefing - Enhanced Card (hidden while suspended) */}
+          {false && microserviceHealth['macro-briefing'] && (
             <div className="bg-gray-700 p-4 rounded relative">
               <div className="flex justify-between items-start">
                 <div>
