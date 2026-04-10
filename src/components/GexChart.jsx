@@ -225,7 +225,7 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     if (!chartReady || !seriesRef.current) return;
     const fetchCandleHistory = async () => {
       try {
-        const data = await fetchCandles(60);
+        const data = await fetchCandles(180);
         if (!data?.candles || data.candles.length === 0) return;
         const candles = data.candles.map(c => ({
           time: Math.floor(new Date(c.timestamp).getTime() / 1000),
