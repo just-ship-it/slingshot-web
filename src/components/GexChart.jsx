@@ -96,6 +96,18 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
 
   useEffect(() => { productRef.current = product; }, [product]);
 
+  // Clear chart data when product switches to prevent stale lines
+  useEffect(() => {
+    if (seriesRef.current) seriesRef.current.setData([]);
+    if (zgSeriesRef.current) zgSeriesRef.current.setData([]);
+    priceLinesRef.current.forEach(line => { try { seriesRef.current?.removePriceLine(line); } catch {} });
+    priceLinesRef.current = [];
+    ltLinesRef.current.forEach(line => { try { seriesRef.current?.removePriceLine(line); } catch {} });
+    ltLinesRef.current = [];
+    positionLinesRef.current.forEach(line => { try { seriesRef.current?.removePriceLine(line); } catch {} });
+    positionLinesRef.current = [];
+  }, [product]);
+
   // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current || chartRef.current) return;
