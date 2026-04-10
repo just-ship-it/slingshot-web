@@ -345,7 +345,7 @@ const Dashboard = ({
           isLoading={tradingDataLoading}
           quotes={quotes}
         />
-        <div className="panel-alerts">
+        <div className="panel-alerts" style={{ flex: '1 1 auto', minHeight: '100px' }}>
           <AlertPanel socket={socket} />
         </div>
         {isStrategyEnabled('ai-trader') && (
