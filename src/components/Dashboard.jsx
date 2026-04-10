@@ -39,6 +39,9 @@ const Dashboard = ({
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
 
+  // Strategy list (for showing/hiding panels based on enabled state)
+  const [strategies, setStrategies] = useState([]);
+
   // Polling state
   const [pollingInterval, setPollingInterval] = useState(null);
 
@@ -143,6 +146,16 @@ const Dashboard = ({
     }
   };
 
+  const fetchStrategies = async () => {
+    try {
+      const data = await api.getStrategiesList();
+      if (Array.isArray(data)) setStrategies(data);
+      else if (data?.strategies) setStrategies(data.strategies);
+    } catch (err) {
+      console.error('Error fetching strategies list:', err);
+    }
+  };
+
 
   // --- Mount effect ---
   useEffect(() => {
@@ -157,7 +170,8 @@ const Dashboard = ({
     const gexInterval = setInterval(() => { fetchGexData(); fetchEsGexData(); }, 3 * 60 * 1000);
 
     fetchStrategyStatus();
-    const strategyInterval = setInterval(fetchStrategyStatus, 10 * 1000);
+    fetchStrategies();
+    const strategyInterval = setInterval(() => { fetchStrategyStatus(); fetchStrategies(); }, 30 * 1000);
 
     return () => {
       clearInterval(gexInterval);
@@ -234,6 +248,10 @@ const Dashboard = ({
       else if (product === 'ES') setEsLtLevels(data);
     };
 
+    const handleStrategyStatusChange = () => {
+      fetchStrategies();
+    };
+
     socket.socket.on('market_data', handleMarketData);
     socket.socket.on('gex_levels', handleGexLevelsUpdate);
     socket.socket.on('lt_levels', handleLtLevels);
@@ -241,6 +259,7 @@ const Dashboard = ({
     socket.socket.on('account_data_updated', handleAccountDataUpdated);
     socket.socket.on('position_update', handlePositionChange);
     socket.socket.on('position_closed', handlePositionChange);
+    socket.socket.on('strategyStatus', handleStrategyStatusChange);
 
     return () => {
       socket.socket.off('market_data', handleMarketData);
@@ -250,6 +269,7 @@ const Dashboard = ({
       socket.socket.off('account_data_updated', handleAccountDataUpdated);
       socket.socket.off('position_update', handlePositionChange);
       socket.socket.off('position_closed', handlePositionChange);
+      socket.socket.off('strategyStatus', handleStrategyStatusChange);
     };
   }, [socket, account]);
 
@@ -294,22 +314,34 @@ const Dashboard = ({
     );
   }
 
+  // Check if a strategy is enabled by name
+  const isStrategyEnabled = (name) => {
+    if (strategies.length === 0) return true; // Show all panels until strategies load
+    return strategies.some(s => s.name === name && s.enabled);
+  };
+
   return (
     <div className="dashboard-wrapper">
-      {/* Top row: info panels */}
+      {/* Top row: info panels (panels hidden when their strategy is disabled) */}
       <div className="dashboard-top-row">
-        <div className="panel-ai-trader">
-          <AITraderPanel />
-        </div>
+        {isStrategyEnabled('ai-trader') && (
+          <div className="panel-ai-trader">
+            <AITraderPanel />
+          </div>
+        )}
         <div className="panel-ivskew">
           <IVSkewPanel socket={socket} quotes={quotes} />
         </div>
-        <div className="panel-es-cross">
-          <ShortDTEIVPanel socket={socket} quotes={quotes} />
-        </div>
-        <div className="panel-lt-regime">
-          <LTCandleRegimePanel socket={socket} quotes={quotes} />
-        </div>
+        {isStrategyEnabled('short-dte-iv') && (
+          <div className="panel-es-cross">
+            <ShortDTEIVPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('lt-candle-regime') && (
+          <div className="panel-lt-regime">
+            <LTCandleRegimePanel socket={socket} quotes={quotes} />
+          </div>
+        )}
         <div className="panel-gex">
           <TabbedGexPanel
             nqGexData={gexData}
@@ -318,8 +350,18 @@ const Dashboard = ({
             onRefreshEs={fetchEsGexData}
           />
         </div>
+        <TradingPanel
+          open={true}
+          onToggle={() => {}}
+          tradingData={tradingData}
+          isLoading={tradingDataLoading}
+          quotes={quotes}
+        />
+        <div className="panel-alerts">
+          <AlertPanel socket={socket} />
+        </div>
       </div>
-      {/* Bottom row: charts + trading + alerts */}
+      {/* Bottom row: charts only */}
       <div className="dashboard-bottom-row panel-open">
         <div className="panel-nq-chart">
           <GexChart
@@ -339,16 +381,6 @@ const Dashboard = ({
             ltLevels={esLtLevels}
             getCandlesFn={api.getEsCandles}
           />
-        </div>
-        <TradingPanel
-          open={true}
-          onToggle={() => {}}
-          tradingData={tradingData}
-          isLoading={tradingDataLoading}
-          quotes={quotes}
-        />
-        <div className="panel-alerts">
-          <AlertPanel socket={socket} />
         </div>
       </div>
       {/* Mobile/tablet: always-visible trading panel below charts */}

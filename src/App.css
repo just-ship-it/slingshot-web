@@ -129,10 +129,10 @@
   gap: 4px;
 }
 
-/* Top row: 5 info panels in a single-row grid */
+/* Top row: info panels + positions + alerts in auto-fit grid */
 .dashboard-top-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 4px;
   flex: 1.2;
   min-height: 0;
@@ -142,10 +142,10 @@
   overflow: hidden;
 }
 
-/* Bottom row: 4 fixed panels — NQ chart, ES chart, Positions, Alerts */
+/* Bottom row: charts only */
 .dashboard-bottom-row {
   display: grid;
-  grid-template-columns: 1.5fr 1.5fr 1.3fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
   flex: 1;
   min-height: 0;
