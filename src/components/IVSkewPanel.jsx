@@ -12,6 +12,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
   const [strategyBlockers, setStrategyBlockers] = useState([]);
   const [cooldownData, setCooldownData] = useState(null);
   const [productPosition, setProductPosition] = useState(null);
+  const [strategyInternals, setStrategyInternals] = useState(null);
+  const [showEvalLog, setShowEvalLog] = useState(false);
 
   // Update candle countdown every second
   useEffect(() => {
@@ -83,6 +85,9 @@ const IVSkewPanel = ({ socket, quotes }) => {
       }
       if (response?.product_position) {
         setProductPosition(response.product_position);
+      }
+      if (response?.internals) {
+        setStrategyInternals(response.internals);
       }
     } catch (err) {
       // silent
@@ -330,6 +335,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
 
   // Determine signal readiness conditions
   const ivOk = ivData?.iv >= MIN_IV;
+  const ivCapOk = !strategyInternals?.maxIV || (ivData?.iv <= strategyInternals.maxIV);
+  const ivVolOk = !strategyInternals?.ivVolatilityThreshold || !strategyInternals?.ivVolatility || (strategyInternals.ivVolatility <= strategyInternals.ivVolatilityThreshold);
   const skewLongOk = ivData?.skew < NEG_SKEW_THRESHOLD;
   const skewShortOk = ivData?.skew > POS_SKEW_THRESHOLD;
   const supportNear = gexProximity?.support?.distance <= LEVEL_PROXIMITY;
@@ -337,8 +344,8 @@ const IVSkewPanel = ({ socket, quotes }) => {
 
   // Overall signal readiness (suppressed during cooldown)
   const inCooldown = cooldownData?.in_cooldown;
-  const longReady = ivOk && skewLongOk && supportNear && !inCooldown;
-  const shortReady = ivOk && skewShortOk && resistanceNear && !inCooldown;
+  const longReady = ivOk && ivCapOk && ivVolOk && skewLongOk && supportNear && !inCooldown;
+  const shortReady = ivOk && ivCapOk && ivVolOk && skewShortOk && resistanceNear && !inCooldown;
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
@@ -443,6 +450,21 @@ const IVSkewPanel = ({ socket, quotes }) => {
                   </span>
                 </div>
               )}
+              {/* IV Filters row */}
+              {(strategyInternals?.maxIV || strategyInternals?.ivVolatilityThreshold) && (
+                <div className="flex items-center text-[13px] mb-0.5">
+                  {strategyInternals?.maxIV && (
+                    <span className={`flex-1 ${ivCapOk ? 'text-green-400' : 'text-red-400'}`}>
+                      {ivCapOk ? '✓' : '✗'} IV Cap ({(strategyInternals.maxIV * 100).toFixed(0)}%)
+                    </span>
+                  )}
+                  {strategyInternals?.ivVolatilityThreshold && (
+                    <span className={`flex-1 ${ivVolOk ? 'text-green-400' : 'text-red-400'}`}>
+                      {ivVolOk ? '✓' : '✗'} IV Vol {strategyInternals.ivVolatility != null ? `${(strategyInternals.ivVolatility * 100).toFixed(2)}%` : 'N/A'}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flex items-center">
                 <span className="text-cyan-400 font-semibold w-16 flex-shrink-0">LONG</span>
                 <span className={`flex-1 ${skewLongOk ? 'text-green-400' : 'text-gray-300'}`}>{skewLongOk ? '✓' : '○'} Skew</span>
@@ -468,6 +490,31 @@ const IVSkewPanel = ({ socket, quotes }) => {
                   <div key={i} className="text-yellow-400">{b}</div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Evaluation Log (expandable) */}
+          {strategyInternals?.evaluationLog?.length > 0 && (
+            <div className="mb-1.5">
+              <button
+                onClick={() => setShowEvalLog(!showEvalLog)}
+                className="text-[11px] text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+              >
+                <span>{showEvalLog ? '▼' : '▶'}</span>
+                <span>Eval Log ({strategyInternals.evaluationLog.length})</span>
+              </button>
+              {showEvalLog && (
+                <div className="mt-1 bg-gray-700 rounded p-1.5 space-y-0.5 text-[11px] font-mono max-h-40 overflow-y-auto">
+                  {[...strategyInternals.evaluationLog].reverse().map((e, i) => (
+                    <div key={i} className={`flex gap-2 ${e.fired ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
+                      <span className="text-gray-500 flex-shrink-0">{e.time}</span>
+                      <span className="flex-shrink-0">{e.price?.toFixed(1)}</span>
+                      <span className="flex-shrink-0">{e.iv ? `${(e.iv * 100).toFixed(1)}%` : ''}</span>
+                      <span className="truncate">{e.result}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
