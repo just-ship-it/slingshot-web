@@ -120,6 +120,7 @@
 }
 
 /* === DASHBOARD WRAPPER - vertical flex: top row + bottom row === */
+/* Legacy wrapper (kept for backward compat) */
 .dashboard-wrapper {
   display: flex;
   flex-direction: column;
@@ -129,29 +130,37 @@
   gap: 4px;
 }
 
-/* Top row: info panels + positions + alerts in auto-fit grid */
-.dashboard-top-row {
+/* Split layout: left panels + right chart */
+.dashboard-split {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr 1.5fr;
+  height: 100%;
+  min-height: 0;
+  padding: 4px;
   gap: 4px;
-  flex: 1.2;
-  min-height: 0;
-}
-.dashboard-top-row > div {
-  min-height: 0;
-  overflow: hidden;
 }
 
-/* Bottom row: charts only */
-.dashboard-bottom-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* Left column: stacked info panels */
+.dashboard-left {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  flex: 1;
   min-height: 0;
-  position: relative;
+  overflow-y: auto;
 }
-.dashboard-bottom-row > div {
+.dashboard-left > div,
+.dashboard-left > .trading-panel {
+  flex-shrink: 0;
+}
+
+/* Right column: chart fills full height */
+.dashboard-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dashboard-right .panel-chart {
+  flex: 1;
   min-height: 0;
   overflow: hidden;
 }
@@ -200,64 +209,33 @@
   to { opacity: 0; transform: translateX(100%); }
 }
 
-/* Tablet: 768-1439px */
+/* Tablet: 768-1439px — stack vertically, chart on top */
 @media (max-width: 1439px) and (min-width: 768px) {
-  /* Unlock vertical scroll on the main content area */
   main.flex-1 { overflow-y: auto !important; }
-  .dashboard-wrapper {
+  .dashboard-split {
+    grid-template-columns: 1fr;
     height: auto;
     overflow: visible;
   }
-  .dashboard-top-row {
-    grid-template-columns: 1fr 1fr;
-    flex: none;
-  }
-  .dashboard-top-row > div { min-height: 250px; }
-  .dashboard-bottom-row {
-    grid-template-columns: 1fr 1fr;
-    flex: none;
-  }
-  .dashboard-bottom-row .panel-nq-chart,
-  .dashboard-bottom-row .panel-es-chart {
-    grid-column: span 1;
-    min-height: 400px;
-  }
-  .dashboard-bottom-row .trading-panel,
-  .dashboard-bottom-row .trading-panel-handle { display: none; }
+  .dashboard-right .panel-chart { min-height: 400px; }
+  .dashboard-left > div { min-height: auto; }
   /* Header: move tickers/stats to sub-row */
   .header-desktop-tickers { display: none !important; }
   .header-desktop-stats { display: none !important; }
   .header-mobile-spacer { display: block; }
   .header-subrow { display: flex; }
   .desktop-only { display: none !important; }
-  /* Trading panel always visible below charts */
-  .mobile-trading-panel { display: block; min-height: 200px; }
 }
 
 /* Phone: <768px */
 @media (max-width: 767px) {
-  /* Unlock vertical scroll on the main content area */
   main.flex-1 { overflow-y: auto !important; }
-  .dashboard-wrapper {
+  .dashboard-split {
+    grid-template-columns: 1fr;
     height: auto;
     overflow: visible;
   }
-  .dashboard-top-row {
-    grid-template-columns: 1fr;
-    flex: none;
-  }
-  .dashboard-top-row > div { min-height: 250px; }
-  .dashboard-bottom-row {
-    grid-template-columns: 1fr;
-    flex: none;
-  }
-  .dashboard-bottom-row .panel-nq-chart,
-  .dashboard-bottom-row .panel-es-chart {
-    grid-column: span 1;
-    min-height: 350px;
-  }
-  .dashboard-bottom-row .trading-panel,
-  .dashboard-bottom-row .trading-panel-handle { display: none; }
+  .dashboard-right .panel-chart { min-height: 350px; }
   /* Header: move tickers/stats to sub-row */
   .header-desktop-tickers { display: none !important; }
   .header-desktop-stats { display: none !important; }

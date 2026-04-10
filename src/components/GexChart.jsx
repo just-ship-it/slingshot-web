@@ -14,7 +14,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', resizeObserverHandler, true);
 }
 
-const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels }) => {
+const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels, onProductChange }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -394,7 +394,14 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
       {/* Header */}
       <div className="flex justify-between items-center px-2 py-1 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-bold text-white">{chartTitle}</h3>
+          {onProductChange ? (
+            <div className="flex gap-1">
+              <button onClick={() => onProductChange('nq')} className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${product === 'nq' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}>NQ</button>
+              <button onClick={() => onProductChange('es')} className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${product === 'es' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}>ES</button>
+            </div>
+          ) : (
+            <h3 className="text-xs font-bold text-white">{chartTitle}</h3>
+          )}
           {strategyStatus && (
             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${strategyDisplay.statusBadge.color}`}>
               {strategyDisplay.statusBadge.text}

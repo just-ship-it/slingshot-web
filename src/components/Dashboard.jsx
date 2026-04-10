@@ -42,6 +42,9 @@ const Dashboard = ({
   // Strategy list (for showing/hiding panels based on enabled state)
   const [strategies, setStrategies] = useState([]);
 
+  // Chart product toggle (NQ/ES)
+  const [chartProduct, setChartProduct] = useState('nq');
+
   // Polling state
   const [pollingInterval, setPollingInterval] = useState(null);
 
@@ -321,27 +324,12 @@ const Dashboard = ({
   };
 
   return (
-    <div className="dashboard-wrapper">
-      {/* Top row: info panels (panels hidden when their strategy is disabled) */}
-      <div className="dashboard-top-row">
-        {isStrategyEnabled('ai-trader') && (
-          <div className="panel-ai-trader">
-            <AITraderPanel />
-          </div>
-        )}
+    <div className="dashboard-split">
+      {/* Left column: info panels stacked */}
+      <div className="dashboard-left">
         <div className="panel-ivskew">
           <IVSkewPanel socket={socket} quotes={quotes} />
         </div>
-        {isStrategyEnabled('short-dte-iv') && (
-          <div className="panel-es-cross">
-            <ShortDTEIVPanel socket={socket} quotes={quotes} />
-          </div>
-        )}
-        {isStrategyEnabled('lt-candle-regime') && (
-          <div className="panel-lt-regime">
-            <LTCandleRegimePanel socket={socket} quotes={quotes} />
-          </div>
-        )}
         <div className="panel-gex">
           <TabbedGexPanel
             nqGexData={gexData}
@@ -360,38 +348,36 @@ const Dashboard = ({
         <div className="panel-alerts">
           <AlertPanel socket={socket} />
         </div>
+        {isStrategyEnabled('ai-trader') && (
+          <div className="panel-ai-trader">
+            <AITraderPanel />
+          </div>
+        )}
+        {isStrategyEnabled('short-dte-iv') && (
+          <div className="panel-es-cross">
+            <ShortDTEIVPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('lt-candle-regime') && (
+          <div className="panel-lt-regime">
+            <LTCandleRegimePanel socket={socket} quotes={quotes} />
+          </div>
+        )}
       </div>
-      {/* Bottom row: charts only */}
-      <div className="dashboard-bottom-row panel-open">
-        <div className="panel-nq-chart">
+
+      {/* Right column: chart with NQ/ES toggle in header */}
+      <div className="dashboard-right">
+        <div className="panel-chart">
           <GexChart
-            quote={quotes.NQ || quotes.MNQ}
-            gexData={gexData}
-            strategyStatus={strategyStatus}
-            product="nq"
-            ltLevels={nqLtLevels}
+            quote={chartProduct === 'nq' ? (quotes.NQ || quotes.MNQ) : (quotes.ES || quotes.MES)}
+            gexData={chartProduct === 'nq' ? gexData : esGexData}
+            strategyStatus={chartProduct === 'nq' ? strategyStatus : null}
+            product={chartProduct}
+            ltLevels={chartProduct === 'nq' ? nqLtLevels : esLtLevels}
+            getCandlesFn={chartProduct === 'es' ? api.getEsCandles : undefined}
+            onProductChange={setChartProduct}
           />
         </div>
-        <div className="panel-es-chart">
-          <GexChart
-            quote={quotes.ES || quotes.MES}
-            gexData={esGexData}
-            strategyStatus={null}
-            product="es"
-            ltLevels={esLtLevels}
-            getCandlesFn={api.getEsCandles}
-          />
-        </div>
-      </div>
-      {/* Mobile/tablet: always-visible trading panel below charts */}
-      <div className="mobile-trading-panel">
-        <TradingPanel
-          open={true}
-          onToggle={() => {}}
-          tradingData={tradingData}
-          isLoading={tradingDataLoading}
-          quotes={quotes}
-        />
       </div>
     </div>
   );
