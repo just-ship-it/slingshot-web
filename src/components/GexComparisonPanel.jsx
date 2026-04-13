@@ -210,11 +210,11 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
             </div>
           </div>
 
-          {/* Copy Button */}
-          <div className="mt-1.5">
+          {/* Copy Button + Last Updated */}
+          <div className="flex items-center gap-2 mt-1.5">
             <button
               onClick={() => handleCopy('tradier')}
-              className={`w-full py-1 px-1.5 text-xs rounded transition-colors ${
+              className={`py-1 px-3 text-xs rounded transition-colors flex-shrink-0 ${
                 copied === 'tradier'
                   ? 'bg-green-600 text-white'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -222,6 +222,11 @@ const GexComparisonPanel = ({ gexData, onRefresh }) => {
             >
               {copied === 'tradier' ? 'Copied!' : 'Copy Levels'}
             </button>
+            {tradierData?.timestamp && (
+              <span className="text-[10px] text-gray-500">
+                Updated {new Date(tradierData.timestamp).toLocaleTimeString()}
+              </span>
+            )}
           </div>
         </>
       )}
