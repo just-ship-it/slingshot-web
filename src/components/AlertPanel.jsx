@@ -114,7 +114,8 @@ const AlertPanel = ({ socket }) => {
             {alerts.map(alert => {
               const sig = alert.signal;
               const isSignal = alert.severity === 'signal' || alert.severity === 'rejected';
-              const direction = sig?.side === 'buy' || sig?.side === 'long' ? 'LONG' : sig?.side === 'sell' || sig?.side === 'short' ? 'SHORT' : null;
+              const sideOrAction = sig?.side || sig?.action;
+              const direction = sideOrAction === 'buy' || sideOrAction === 'long' || sideOrAction === 'Buy' ? 'LONG' : sideOrAction === 'sell' || sideOrAction === 'short' || sideOrAction === 'Sell' ? 'SHORT' : null;
               const dirColor = direction === 'LONG' ? 'text-green-400' : 'text-red-400';
 
               return (
