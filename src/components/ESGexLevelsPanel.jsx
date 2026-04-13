@@ -210,43 +210,18 @@ const ESGexLevelsPanel = ({ gexData, onRefresh }) => {
             </div>
           </div>
 
-          {/* Copy Buttons */}
-          <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+          {/* Copy Button */}
+          <div className="mt-1.5">
             <button
-              onClick={() => handleCopy('combined')}
-              className={`py-1 px-1.5 text-xs rounded transition-colors ${
-                copied === 'combined'
+              onClick={() => handleCopy('tradier')}
+              className={`w-full py-1 px-1.5 text-xs rounded transition-colors ${
+                copied === 'tradier'
                   ? 'bg-green-600 text-white'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
             >
-              {copied === 'combined' ? 'Copied' : 'Combined'}
+              {copied === 'tradier' ? 'Copied!' : 'Copy Levels'}
             </button>
-            <button
-              onClick={() => handleCopy('cboe')}
-              className={`py-1 px-1.5 text-xs rounded transition-colors ${
-                copied === 'cboe'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              {copied === 'cboe' ? 'Copied' : 'CBOE'}
-            </button>
-            <button
-              onClick={() => handleCopy('tradier')}
-              className={`py-1 px-1.5 text-xs rounded transition-colors ${
-                copied === 'tradier'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              {copied === 'tradier' ? 'Copied' : 'Schwab'}
-            </button>
-          </div>
-
-          {/* Source info */}
-          <div className="mt-1 text-xs text-gray-400 text-center">
-            CBOE (15min delay) · Schwab (real-time)
           </div>
         </>
       )}
