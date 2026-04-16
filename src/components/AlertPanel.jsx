@@ -1,9 +1,74 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, ChevronDown } from 'lucide-react';
 import { api } from '../services/api';
 
 const MAX_ALERTS = 50;
 
-const AlertPanel = ({ socket }) => {
+const ResendButton = ({ signal, accounts }) => {
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+
+  if (!signal?.strategy || !signal?.symbol) return null;
+
+  const handleResend = async (targetAccountId = null) => {
+    setSending(true);
+    setResult(null);
+    setOpen(false);
+    try {
+      await api.resendSignal(signal, targetAccountId);
+      setResult('ok');
+    } catch (err) {
+      setResult('fail');
+    }
+    setSending(false);
+    setTimeout(() => setResult(null), 3000);
+  };
+
+  // Filter out shadow accounts
+  const shadowIds = new Set(
+    (accounts || []).filter(a => a.tracking?.via || a.config?.tracking?.via)
+      .map(a => a.tracking?.via || a.config?.tracking?.via)
+  );
+  const visibleAccounts = (accounts || []).filter(a => !shadowIds.has(a.id));
+
+  return (
+    <div className="relative inline-flex items-center ml-1">
+      <button
+        onClick={() => handleResend(null)}
+        disabled={sending}
+        className="text-[10px] px-1.5 py-0.5 rounded-l bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/30 disabled:opacity-50"
+        title="Resend to all routed accounts"
+      >
+        {sending ? <RefreshCw className="w-3 h-3 animate-spin inline" /> : 'Resend'}
+      </button>
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="text-[10px] px-1 py-0.5 rounded-r bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-l-0 border-blue-500/30"
+      >
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      {result === 'ok' && <span className="ml-1 text-[10px] text-green-400">Sent</span>}
+      {result === 'fail' && <span className="ml-1 text-[10px] text-red-400">Failed</span>}
+      {open && (
+        <div className="absolute top-full right-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[140px]">
+          <div className="text-[10px] text-gray-500 px-2 py-1 border-b border-gray-700">Send to specific account</div>
+          {visibleAccounts.map(a => (
+            <button
+              key={a.id}
+              onClick={() => handleResend(a.id)}
+              className="block w-full text-left text-xs px-2 py-1.5 text-gray-300 hover:bg-gray-700"
+            >
+              {a.displayName || a.id}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AlertPanel = ({ socket, accounts }) => {
   const [alerts, setAlerts] = useState([]);
 
   // Load persisted alerts from initial_state
@@ -144,6 +209,7 @@ const AlertPanel = ({ socket }) => {
                       {sig.price != null && <span className="ml-2 text-white">@ {sig.price}</span>}
                       {sig.take_profit != null && <span className="ml-2 text-green-400">TP {sig.take_profit}</span>}
                       {sig.stop_loss != null && <span className="ml-2 text-red-400">SL {sig.stop_loss}</span>}
+                      <ResendButton signal={sig} accounts={accounts} />
                       {alert.severity === 'rejected' && <div className="text-xs text-red-400 mt-0.5">{alert.message}</div>}
                     </div>
                   ) : (

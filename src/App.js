@@ -4,10 +4,12 @@ import PlatformStatus from './components/PlatformStatus';
 import MacroBriefing from './components/MacroBriefing';
 import PnLPanel from './components/PnLPanel';
 import CompactHeader from './components/CompactHeader';
+import AccountsManager from './components/AccountsManager';
 import ToastContainer, { formatToastMessage } from './components/ToastContainer';
 import Login from './components/Login';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useTradingData } from './hooks/useTradingData';
+import { useMultiAccountData } from './hooks/useMultiAccountData';
 import { api } from './services/api';
 import { authUtils } from './utils/auth';
 import './App.css';
@@ -23,6 +25,7 @@ function App() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMacroModal, setShowMacroModal] = useState(false);
   const [showPnLModal, setShowPnLModal] = useState(false);
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
 
   // Lifted state for header
   const [quotes, setQuotes] = useState({});
@@ -134,8 +137,11 @@ function App() {
 
   const { tradingData, isLoading: tradingDataLoading } = useTradingData(socket, handleTradingChangeEvent);
 
-  const openPositionCount = tradingData?.stats?.totalPositions || 0;
-  const pendingOrderCount = tradingData?.stats?.totalWorkingOrders || 0;
+  // Multi-account data hook (replaces single-account pattern for trading panel)
+  const multiAccountData = useMultiAccountData(socket);
+
+  const openPositionCount = multiAccountData.totals?.totalPositions || tradingData?.stats?.totalPositions || 0;
+  const pendingOrderCount = multiAccountData.totals?.totalPending || tradingData?.stats?.totalWorkingOrders || 0;
 
   const dismissToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -245,13 +251,12 @@ function App() {
         posFlashKey={posFlashKey}
         tradingPanelOpen={tradingPanelOpen}
         onToggleTradingPanel={() => setTradingPanelOpen(prev => !prev)}
-        accounts={accounts}
-        selectedAccount={selectedAccount}
-        onAccountChange={handleAccountChange}
+        totals={multiAccountData.totals}
         connectionStatus={connectionStatus}
         onStatusClick={() => setShowStatusModal(true)}
         onMacroClick={() => setShowMacroModal(true)}
         onPnLClick={() => setShowPnLModal(true)}
+        onAccountsClick={() => setShowAccountsModal(true)}
         onLogout={handleLogout}
       />
 
@@ -266,8 +271,7 @@ function App() {
           onAccountSummaryChange={setAccountSummary}
           tradingPanelOpen={tradingPanelOpen}
           onToggleTradingPanel={() => setTradingPanelOpen(prev => !prev)}
-          tradingData={tradingData}
-          tradingDataLoading={tradingDataLoading}
+          multiAccountData={multiAccountData}
           onAccountsLoaded={(loadedAccounts) => {
             setAccounts(loadedAccounts);
             if (loadedAccounts.length > 0 && !selectedAccount) {
@@ -348,6 +352,21 @@ function App() {
             </div>
             <div className="flex-1 overflow-y-auto">
               <MacroBriefing />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Accounts & Routing Modal */}
+      {showAccountsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-8 px-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-white">Accounts & Routing</h2>
+              <button onClick={() => setShowAccountsModal(false)} className="text-gray-400 hover:text-white transition-colors text-xl leading-none px-1">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <AccountsManager onClose={() => setShowAccountsModal(false)} />
             </div>
           </div>
         </div>

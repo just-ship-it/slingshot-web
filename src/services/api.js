@@ -92,15 +92,15 @@ export const api = {
   },
 
   async getAccountBalance(accountId) {
-    // Get account data which includes balance info
-    const account = await apiClient.get(`/api/accounts/${accountId}`);
-    return {
-      balance: account.balance,
-      realizedPnL: account.realizedPnL,
-      unrealizedPnL: account.unrealizedPnL,
-      marginUsed: account.marginUsed,
-      marginAvailable: account.marginAvailable
-    };
+    return await apiClient.get(`/api/accounts/${accountId}/balance`);
+  },
+
+  async getPendingOrders() {
+    return await apiClient.get('/api/pending');
+  },
+
+  async resendSignal(signal, targetAccountId = null) {
+    return await apiClient.post('/api/signals/resend', { signal, targetAccountId });
   },
 
   async getAccountSummary(accountId) {
@@ -648,9 +648,10 @@ export const api = {
   async getKillSwitchStatus() {
     try {
       const response = await apiClient.get('/api/trading/status');
+      const enabled = response.tradingEnabled ?? response.enabled ?? false;
       return {
-        tradingEnabled: response.enabled,
-        status: response.enabled ? 'enabled' : 'disabled',
+        tradingEnabled: enabled,
+        status: enabled ? 'enabled' : 'disabled',
         details: response
       };
     } catch (error) {
@@ -778,7 +779,23 @@ export const api = {
       optimal: false,
       message: 'Contract optimization not available in monitoring mode'
     };
-  }
+  },
+
+  // Accounts CRUD (new account-store endpoints)
+  createAccount: (data) => apiClient.post('/api/accounts', data),
+  updateAccount: (id, data) => apiClient.put(`/api/accounts/${id}`, data),
+  deleteAccount: (id) => apiClient.delete(`/api/accounts/${id}`),
+  testAccount: (id) => apiClient.post(`/api/accounts/${id}/test`),
+
+  // Connector schemas (drives dynamic forms)
+  getConnectorSchemas: () => apiClient.get('/api/connectors/schemas'),
+
+  // Routes CRUD
+  getRoutes: () => apiClient.get('/api/routes'),
+  setStrategyRoute: (strategy, accountIds) => apiClient.put(`/api/routes/${strategy}`, { accountIds }),
+  setDefaultRoute: (accountIds) => apiClient.put('/api/routes/defaults', { accountIds }),
+  deleteStrategyRoute: (strategy) => apiClient.delete(`/api/routes/${strategy}`),
+  exportRoutes: () => apiClient.get('/api/routes/export'),
 };
 
 /**

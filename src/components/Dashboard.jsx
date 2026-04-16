@@ -5,7 +5,7 @@ import IVSkewPanel from './IVSkewPanel';
 import ShortDTEIVPanel from './ShortDTEIVPanel';
 import LTCandleRegimePanel from './LTCandleRegimePanel';
 import TabbedGexPanel from './TabbedGexPanel';
-import TradingPanel from './TradingPanel';
+import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
 import AlertPanel from './AlertPanel';
 import { api } from '../services/api';
@@ -21,8 +21,7 @@ const Dashboard = ({
   onAccountSummaryChange,
   tradingPanelOpen,
   onToggleTradingPanel,
-  tradingData,
-  tradingDataLoading,
+  multiAccountData,
 }) => {
   const [accountSummary, setAccountSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -338,15 +337,19 @@ const Dashboard = ({
             onRefreshEs={fetchEsGexData}
           />
         </div>
-        <TradingPanel
-          open={true}
-          onToggle={() => {}}
-          tradingData={tradingData}
-          isLoading={tradingDataLoading}
-          quotes={quotes}
-        />
+        {multiAccountData && (
+          <MultiAccountPanel
+            accounts={multiAccountData.accounts}
+            positions={multiAccountData.positions}
+            pendingOrders={multiAccountData.pendingOrders}
+            balances={multiAccountData.balances}
+            totals={multiAccountData.totals}
+            isLoading={multiAccountData.isLoading}
+            onReload={multiAccountData.reload}
+          />
+        )}
         <div className="panel-alerts" style={{ flex: '1 1 auto', minHeight: '100px' }}>
-          <AlertPanel socket={socket} />
+          <AlertPanel socket={socket} accounts={multiAccountData?.accounts || []} />
         </div>
         {isStrategyEnabled('ai-trader') && (
           <div className="panel-ai-trader">

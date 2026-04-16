@@ -1,4 +1,5 @@
 import React from 'react';
+import { Settings } from 'lucide-react';
 
 const TICKER_GROUPS = [
   { symbols: ['NQ', 'QQQ'], separator: false },
@@ -7,19 +8,17 @@ const TICKER_GROUPS = [
 
 const CompactHeader = ({
   quotes = {},
-  accountSummary,
   openPositionCount = 0,
   pendingOrderCount = 0,
   posFlashKey = 0,
   tradingPanelOpen = false,
   onToggleTradingPanel,
-  accounts = [],
-  selectedAccount,
-  onAccountChange,
+  totals = {},
   connectionStatus,
   onStatusClick,
   onMacroClick,
   onPnLClick,
+  onAccountsClick,
   onLogout,
 }) => {
   const formatChange = (value) => {
@@ -27,15 +26,6 @@ const CompactHeader = ({
     const prefix = value > 0 ? '+' : '';
     return `${prefix}${value.toFixed(2)}`;
   };
-
-  const formatCurrency = (value) => {
-    if (value == null) return '--';
-    return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  };
-
-  const dayPnL = accountSummary?.dayPnL;
-  const dayPnLPct = accountSummary?.dayPnLPercent;
-  const pnlColor = dayPnL > 0 ? 'text-green-400' : dayPnL < 0 ? 'text-red-400' : 'text-gray-300';
 
   const renderTickers = () => (
     TICKER_GROUPS.map((group, gi) => (
@@ -72,49 +62,44 @@ const CompactHeader = ({
     ))
   );
 
+  const totalUnrealizedPnL = totals?.totalUnrealizedPnL;
+  const totalPnLColor = totalUnrealizedPnL > 0 ? 'text-green-400' : totalUnrealizedPnL < 0 ? 'text-red-400' : 'text-gray-300';
+
   const renderAccountStats = () => (
-    accountSummary ? (
-      <div className="flex items-center gap-3">
-        <span>
-          <span className="text-gray-300 mr-1">Bal</span>
-          <span className="font-semibold text-white">{formatCurrency(accountSummary.balance)}</span>
+    <div className="flex items-center gap-3">
+      <button
+        onClick={onPnLClick}
+        className="hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors"
+        title="View P&L History"
+      >
+        <span className="text-gray-300 mr-1">P&L</span>
+        <span className={`font-semibold ${totalPnLColor}`}>
+          {totalUnrealizedPnL != null
+            ? `${totalUnrealizedPnL >= 0 ? '+' : ''}$${Math.abs(totalUnrealizedPnL).toFixed(2)}`
+            : '--'
+          }
         </span>
-        <span>
-          <span className="text-gray-300 mr-1">Avail</span>
-          <span className="font-semibold text-white">{formatCurrency(accountSummary.availableFunds)}</span>
+      </button>
+      <button
+        onClick={onToggleTradingPanel}
+        className={`desktop-only flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+          tradingPanelOpen ? 'bg-gray-600' : 'hover:bg-gray-700'
+        }`}
+        title="Toggle trading panel"
+      >
+        <span key={posFlashKey} className={posFlashKey > 0 ? 'pos-flash' : ''}>
+          <span className="text-gray-300 mr-1">Pos</span>
+          <span className="font-semibold text-white">{openPositionCount}</span>
+          {pendingOrderCount > 0 && (
+            <>
+              <span className="text-gray-500 mx-1">|</span>
+              <span className="text-gray-300">Ord</span>
+              <span className="font-semibold text-yellow-400 ml-1">{pendingOrderCount}</span>
+            </>
+          )}
         </span>
-        <button
-          onClick={onPnLClick}
-          className="hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors"
-          title="View P&L History"
-        >
-          <span className="text-gray-300 mr-1">P&L</span>
-          <span className={`font-semibold ${pnlColor}`}>
-            {dayPnL != null ? `${dayPnL >= 0 ? '+' : ''}$${Math.abs(dayPnL).toFixed(2)}` : '--'}
-            {dayPnLPct != null && ` (${dayPnLPct >= 0 ? '+' : ''}${dayPnLPct.toFixed(2)}%)`}
-          </span>
-        </button>
-        <button
-          onClick={onToggleTradingPanel}
-          className={`desktop-only flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
-            tradingPanelOpen ? 'bg-gray-600' : 'hover:bg-gray-700'
-          }`}
-          title="Toggle trading panel"
-        >
-          <span key={posFlashKey} className={posFlashKey > 0 ? 'pos-flash' : ''}>
-            <span className="text-gray-300 mr-1">Pos</span>
-            <span className="font-semibold text-white">{openPositionCount}</span>
-            {pendingOrderCount > 0 && (
-              <>
-                <span className="text-gray-500 mx-1">|</span>
-                <span className="text-gray-300">Ord</span>
-                <span className="font-semibold text-yellow-400 ml-1">{pendingOrderCount}</span>
-              </>
-            )}
-          </span>
-        </button>
-      </div>
-    ) : null
+      </button>
+    </div>
   );
 
   return (
@@ -139,23 +124,15 @@ const CompactHeader = ({
             {renderAccountStats()}
           </div>
 
-          {/* Account selector */}
-          {accounts.length > 0 && (
-            <select
-              value={selectedAccount?.id || ''}
-              onChange={(e) => {
-                const account = accounts.find(acc => acc.id.toString() === e.target.value);
-                if (account) onAccountChange(account);
-              }}
-              className="bg-gray-700 border border-gray-600 text-white text-[15px] px-1.5 py-0.5 rounded max-w-[100px]"
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.id}
-                </option>
-              ))}
-            </select>
-          )}
+          {/* Accounts & Routing */}
+          <button
+            onClick={onAccountsClick}
+            className="flex items-center gap-1 text-gray-300 hover:text-white hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors"
+            title="Accounts & Routing"
+          >
+            <Settings className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="desktop-only">Accounts</span>
+          </button>
 
           {/* Macro briefing modal */}
           <button
