@@ -205,10 +205,26 @@ const AlertPanel = ({ socket, accounts }) => {
                   {isSignal && sig ? (
                     <div className="mt-1 text-sm font-medium leading-snug">
                       <span className="text-blue-300">{sig.strategy}</span>
+                      {sig.ruleId && (
+                        <span
+                          className="ml-1 px-1 rounded bg-purple-900/40 text-purple-300 text-[10px] font-mono"
+                          title={sig.ruleDescription || sig.ruleId}
+                        >
+                          {sig.ruleId}
+                        </span>
+                      )}
                       {direction && <span className={`ml-2 ${dirColor}`}>{direction}</span>}
                       {sig.price != null && <span className="ml-2 text-white">@ {sig.price}</span>}
-                      {sig.take_profit != null && <span className="ml-2 text-green-400">TP {sig.take_profit}</span>}
-                      {sig.stop_loss != null && <span className="ml-2 text-red-400">SL {sig.stop_loss}</span>}
+                      {sig.take_profit != null && (
+                        <span className="ml-2 text-green-400">
+                          TP {sig.take_profit}{sig.targetPoints != null ? ` (+${sig.targetPoints}pt)` : ''}
+                        </span>
+                      )}
+                      {sig.stop_loss != null && (
+                        <span className="ml-2 text-red-400">
+                          SL {sig.stop_loss}{sig.stopPoints != null ? ` (-${sig.stopPoints}pt)` : ''}
+                        </span>
+                      )}
                       <ResendButton signal={sig} accounts={accounts} />
                       {alert.severity === 'rejected' && <div className="text-xs text-red-400 mt-0.5">{alert.message}</div>}
                     </div>
