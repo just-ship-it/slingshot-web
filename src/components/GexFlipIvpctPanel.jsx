@@ -292,6 +292,27 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
               {pastEodCutoff ? ' (triggered)' : ''}
             </span>
           </div>
+          <div className="flex justify-between text-[15px]">
+            <span className="text-gray-300">IV history</span>
+            <span className="font-mono">
+              <span className={`${(internals.liveIVSamples ?? 0) >= 200 ? 'text-green-400' : (internals.liveIVSamples ?? 0) > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                {internals.liveIVSamples ?? 0} samples
+              </span>
+              <span
+                className={`ml-2 px-1 rounded text-[12px] ${internals.redisAttached ? 'bg-green-900/40 text-green-300' : 'bg-yellow-900/40 text-yellow-300'}`}
+                title={internals.redisAttached
+                  ? `Persisted to Redis key: ${internals.redisKey || '(default)'}`
+                  : 'Redis NOT attached — buffer will reset on restart'}
+              >
+                {internals.redisAttached ? 'redis' : 'in-mem'}
+              </span>
+              {internals.ivHistoryOldest && internals.ivHistoryNewest && (
+                <span className="text-gray-500 text-[12px] ml-2">
+                  span {Math.round((internals.ivHistoryNewest - internals.ivHistoryOldest) / (60 * 60 * 1000))}h
+                </span>
+              )}
+            </span>
+          </div>
         </div>
 
         {/* Feature snapshot */}
