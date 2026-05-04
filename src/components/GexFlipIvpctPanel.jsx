@@ -204,11 +204,15 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
       met: skew != null && skew > skewMin,
     },
     regimeNeutral: {
-      label: regime ? `regime=${regime}` : `regime=${neutralRegimeId}`,
+      label: regime && regime !== neutralRegimeId
+        ? `regime=${neutralRegimeId} (got: ${regime})`
+        : `regime=${neutralRegimeId}`,
       met: regime === neutralRegimeId,
     },
     regimeStrongNeg: {
-      label: regime ? `regime=${regime}` : `regime=${strongNegRegimeId}`,
+      label: regime && regime !== strongNegRegimeId
+        ? `regime=${strongNegRegimeId} (got: ${regime})`
+        : `regime=${strongNegRegimeId}`,
       met: regime === strongNegRegimeId,
     },
   };
