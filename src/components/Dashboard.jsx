@@ -4,6 +4,7 @@ import GexChart from './GexChart';
 import IVSkewPanel from './IVSkewPanel';
 import ShortDTEIVPanel from './ShortDTEIVPanel';
 import LTCandleRegimePanel from './LTCandleRegimePanel';
+import GexFlipIvpctPanel from './GexFlipIvpctPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
@@ -364,6 +365,11 @@ const Dashboard = ({
         {isStrategyEnabled('lt-candle-regime') && (
           <div className="panel-lt-regime">
             <LTCandleRegimePanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('gex-flip-ivpct') && (
+          <div className="panel-gex-flip-ivpct">
+            <GexFlipIvpctPanel socket={socket} quotes={quotes} />
           </div>
         )}
       </div>

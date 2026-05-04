@@ -473,6 +473,16 @@ export const api = {
     }
   },
 
+  // GEX-FLIP-IVPCT strategy status from multi-strategy engine
+  async getGexFlipIvpctStatus() {
+    try {
+      return await apiClient.get('/api/strategy/gex-flip-ivpct/status');
+    } catch (error) {
+      console.log('GEX-FLIP-IVPCT status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {
