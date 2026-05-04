@@ -21,6 +21,28 @@ function getEtNow() {
   return { weekday: o.weekday, hour: parseInt(o.hour, 10), minute: parseInt(o.minute, 10) };
 }
 
+// Seconds until the next 5-minute clock boundary (00, 05, 10, ...).
+// Boundaries are absolute clock minutes regardless of timezone, so we use
+// the local clock — matches when the data service emits 5m candle closes.
+function secondsTo5mBoundary() {
+  const now = new Date();
+  const sec = now.getSeconds();
+  const min = now.getMinutes();
+  const intoPeriod = (min % 5) * 60 + sec;
+  return 300 - intoPeriod;
+}
+
+// Parse "HH:MM" -> { hour, minute, label }. Empty/invalid returns null.
+function parseEtCutoff(s) {
+  if (!s || typeof s !== 'string') return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hour = parseInt(m[1], 10);
+  const minute = parseInt(m[2], 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute, label: `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}` };
+}
+
 const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const [status, setStatus] = useState(null);
   const [ivData, setIvData] = useState(null);
@@ -30,9 +52,18 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const [etNow, setEtNow] = useState(getEtNow());
   const [cooldownData, setCooldownData] = useState(null);
   const [showEvalLog, setShowEvalLog] = useState(false);
+  const [evalCountdown, setEvalCountdown] = useState(secondsTo5mBoundary());
 
   useEffect(() => {
     const t = setInterval(() => setEtNow(getEtNow()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // 5m candle countdown — strategy only evaluates on 5m bar close, so this
+  // tells the user when the next evaluation will actually happen.
+  useEffect(() => {
+    setEvalCountdown(secondsTo5mBoundary());
+    const t = setInterval(() => setEvalCountdown(secondsTo5mBoundary()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -98,7 +129,13 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const startH = internals.entryWindowStartHour ?? 4;
   const endH = internals.entryWindowEndHour ?? 13;
   const inEntryWindow = etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun' && etNow.hour >= startH && etNow.hour < endH;
-  const pastEodCutoff = etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun' && (etNow.hour > 16 || (etNow.hour === 16 && etNow.minute >= 40));
+
+  // EOD cutoff comes from EOD_CUTOFF_ET (mirrored from trade-orchestrator).
+  // Empty string means orchestrator-side EOD flat is disabled.
+  const eodCutoff = parseEtCutoff(internals.eodCutoffEt ?? '16:40');
+  const pastEodCutoff = eodCutoff
+    && etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun'
+    && (etNow.hour > eodCutoff.hour || (etNow.hour === eodCutoff.hour && etNow.minute >= eodCutoff.minute));
 
   const nqPrice = quotes?.NQ?.last || quotes?.MNQ?.last || quotes?.NQ?.close;
   const skew = ivData?.skew ?? null;
@@ -199,7 +236,7 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   // Blockers — things preventing any signal regardless of rule status
   const blockers = [];
   if (!inEntryWindow) blockers.push(`Outside entry window (${String(startH).padStart(2,'0')}:00–${String(endH).padStart(2,'0')}:00 ET)`);
-  if (pastEodCutoff) blockers.push('Past EOD force-flat (16:40 ET)');
+  if (pastEodCutoff) blockers.push(`Past EOD force-flat (${eodCutoff.label} ET)`);
   if (inCooldown) blockers.push(`Cooldown ${Math.floor(cooldownData.seconds_remaining/60)}:${String(cooldownData.seconds_remaining%60).padStart(2,'0')}`);
   if (!ivData) blockers.push('No IV data');
   if (!gexLevels) blockers.push('No GEX levels');
@@ -220,9 +257,17 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
-      <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
+      <div className="flex justify-between items-center mb-1.5 flex-shrink-0 gap-2">
         <h3 className="text-[15px] font-bold text-white">GEX-FLIP-IVPCT</h3>
-        <div className={`px-1.5 py-0.5 rounded text-[15px] font-medium text-white ${badge.color}`}>{badge.text}</div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-[13px] font-mono ${evalCountdown <= 10 ? 'text-yellow-400 animate-pulse' : 'text-cyan-400'}`}
+            title="Seconds until next 5m evaluation"
+          >
+            next eval {Math.floor(evalCountdown / 60)}:{String(evalCountdown % 60).padStart(2,'0')}
+          </span>
+          <div className={`px-1.5 py-0.5 rounded text-[15px] font-medium text-white ${badge.color}`}>{badge.text}</div>
+        </div>
       </div>
 
       <PositionBanner productPosition={status?.product_position} />
@@ -242,8 +287,9 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
           </div>
           <div className="flex justify-between text-[15px]">
             <span className="text-gray-300">EOD force-flat</span>
-            <span className={`font-mono ${pastEodCutoff ? 'text-orange-400' : 'text-gray-400'}`}>
-              16:40 ET {pastEodCutoff ? '(triggered)' : ''}
+            <span className={`font-mono ${pastEodCutoff ? 'text-orange-400' : eodCutoff ? 'text-gray-400' : 'text-gray-500'}`}>
+              {eodCutoff ? `${eodCutoff.label} ET` : 'disabled'}
+              {pastEodCutoff ? ' (triggered)' : ''}
             </span>
           </div>
         </div>
