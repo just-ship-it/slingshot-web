@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 
-const WELL_KNOWN_STRATEGIES = ['IV_SKEW_GEX', 'SHORT_DTE_IV', 'AI_TRADER'];
+const WELL_KNOWN_STRATEGIES = ['GEX_FLIP_IVPCT', 'IV_SKEW_GEX', 'SHORT_DTE_IV', 'AI_TRADER'];
 
 const RoutingMatrix = ({ accounts = [] }) => {
   const [routes, setRoutes] = useState(null);
@@ -89,6 +89,17 @@ const RoutingMatrix = ({ accounts = [] }) => {
     return <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900 text-blue-300">TV</span>;
   };
 
+  const getModeBadge = (account) => {
+    // Tradovate accounts have an explicit live/demo mode; PMT routes through
+    // its own broker so the badge is not meaningful there.
+    if ((account.broker || 'tradovate') === 'pickmytrade') return null;
+    const mode = account.config?.mode || 'demo';
+    if (mode === 'live') {
+      return <span className="text-xs px-1.5 py-0.5 rounded bg-green-900 text-green-300">LIVE</span>;
+    }
+    return <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900 text-yellow-300">DEMO</span>;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 text-gray-400">
@@ -124,7 +135,10 @@ const RoutingMatrix = ({ accounts = [] }) => {
             {accounts.map(acc => (
               <th key={acc.id} className="text-center py-2 px-3">
                 <div className="flex flex-col items-center gap-0.5">
-                  {getBrokerBadge(acc)}
+                  <div className="flex items-center gap-1">
+                    {getBrokerBadge(acc)}
+                    {getModeBadge(acc)}
+                  </div>
                   <span className="text-gray-300 text-xs whitespace-nowrap">
                     {acc.displayName || acc.id}
                   </span>
