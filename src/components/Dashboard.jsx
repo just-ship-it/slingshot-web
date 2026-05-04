@@ -325,11 +325,34 @@ const Dashboard = ({
 
   return (
     <div className="dashboard-split">
-      {/* Left column: info panels stacked */}
+      {/* Left column: info panels stacked.
+          Active strategy panels first, then GEX, multi-account, alerts. */}
       <div className="dashboard-left">
-        <div className="panel-ivskew">
-          <IVSkewPanel socket={socket} quotes={quotes} />
-        </div>
+        {isStrategyEnabled('gex-flip-ivpct') && (
+          <div className="panel-gex-flip-ivpct">
+            <GexFlipIvpctPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('iv-skew-gex') && (
+          <div className="panel-ivskew">
+            <IVSkewPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('ai-trader') && (
+          <div className="panel-ai-trader">
+            <AITraderPanel />
+          </div>
+        )}
+        {isStrategyEnabled('short-dte-iv') && (
+          <div className="panel-es-cross">
+            <ShortDTEIVPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('lt-candle-regime') && (
+          <div className="panel-lt-regime">
+            <LTCandleRegimePanel socket={socket} quotes={quotes} />
+          </div>
+        )}
         <div className="panel-gex">
           <TabbedGexPanel
             nqGexData={gexData}
@@ -352,26 +375,6 @@ const Dashboard = ({
         <div className="panel-alerts" style={{ flex: '1 1 auto', minHeight: '100px' }}>
           <AlertPanel socket={socket} accounts={multiAccountData?.accounts || []} />
         </div>
-        {isStrategyEnabled('ai-trader') && (
-          <div className="panel-ai-trader">
-            <AITraderPanel />
-          </div>
-        )}
-        {isStrategyEnabled('short-dte-iv') && (
-          <div className="panel-es-cross">
-            <ShortDTEIVPanel socket={socket} quotes={quotes} />
-          </div>
-        )}
-        {isStrategyEnabled('lt-candle-regime') && (
-          <div className="panel-lt-regime">
-            <LTCandleRegimePanel socket={socket} quotes={quotes} />
-          </div>
-        )}
-        {isStrategyEnabled('gex-flip-ivpct') && (
-          <div className="panel-gex-flip-ivpct">
-            <GexFlipIvpctPanel socket={socket} quotes={quotes} />
-          </div>
-        )}
       </div>
 
       {/* Right column: chart with NQ/ES toggle in header */}
