@@ -3,12 +3,12 @@ import { api } from '../services/api';
 import PositionBanner from './PositionBanner';
 
 const RULES = [
-  { id: 'L1', side: 'LONG',  desc: 'putWall<=50 + iv.low + skew>+0.015',  stop: 113, tgt: 198 },
-  { id: 'L4', side: 'LONG',  desc: 'gex.neutral + above flip + iv.low',    stop: 106, tgt: 187 },
-  { id: 'L3', side: 'LONG',  desc: 'gex.strong_neg + above flip',          stop: 184, tgt: 278 },
-  { id: 'S3', side: 'SHORT', desc: 'callWall<=50 + below flip',            stop: 114, tgt: 196 },
-  { id: 'S1', side: 'SHORT', desc: 'callWall<=50 + iv.high + skew>+0.015', stop: 131, tgt: 211 },
-  { id: 'S2', side: 'SHORT', desc: 'callWall<=50 + iv.high',               stop: 129, tgt: 211 },
+  { id: 'L1', side: 'LONG',  priority: 100, conditionIds: ['putWallNear', 'ivLow', 'skewPos'],     stop: 113, tgt: 198 },
+  { id: 'L4', side: 'LONG',  priority: 90,  conditionIds: ['regimeNeutral', 'aboveFlip', 'ivLow'], stop: 106, tgt: 187 },
+  { id: 'L3', side: 'LONG',  priority: 80,  conditionIds: ['regimeStrongNeg', 'aboveFlip'],        stop: 184, tgt: 278 },
+  { id: 'S3', side: 'SHORT', priority: 100, conditionIds: ['callWallNear', 'belowFlip'],           stop: 114, tgt: 196 },
+  { id: 'S1', side: 'SHORT', priority: 90,  conditionIds: ['callWallNear', 'ivHigh', 'skewPos'],   stop: 131, tgt: 211 },
+  { id: 'S2', side: 'SHORT', priority: 80,  conditionIds: ['callWallNear', 'ivHigh'],              stop: 129, tgt: 211 },
 ];
 
 function getEtNow() {
@@ -28,11 +28,25 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [etNow, setEtNow] = useState(getEtNow());
+  const [cooldownData, setCooldownData] = useState(null);
+  const [showEvalLog, setShowEvalLog] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setEtNow(getEtNow()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // Local cooldown countdown — tick every second between API polls
+  useEffect(() => {
+    if (!cooldownData?.in_cooldown || cooldownData.seconds_remaining <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownData(prev => {
+        if (!prev || prev.seconds_remaining <= 1) return { ...prev, in_cooldown: false, seconds_remaining: 0 };
+        return { ...prev, seconds_remaining: prev.seconds_remaining - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownData?.in_cooldown, cooldownData?.seconds_remaining > 0]);
 
   const fetchAll = async () => {
     try {
@@ -45,6 +59,7 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
       setStatus(s || { success: false, message: 'signal-generator may not be running' });
       setIvData(iv);
       setGexLevels(gex);
+      if (s?.cooldown) setCooldownData(s.cooldown);
     } catch (err) {
       setError('Failed to fetch GEX-FLIP-IVPCT status');
     } finally {
@@ -94,31 +109,109 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const putWall = gexLevels?.put_wall ?? gexLevels?.putWall ?? null;
   const gammaFlip = gexLevels?.gamma_flip ?? gexLevels?.gammaFlip ?? null;
 
-  // Per-rule fire check (mirrors strategy logic for visibility)
-  const ruleFires = (id) => {
-    if (!nqPrice) return false;
-    const wallProx = internals.wallProximity ?? 50;
-    const ivLow = (internals.ivPctileLowMax ?? 0.20);
-    const ivHigh = (internals.ivPctileHighMin ?? 0.80);
-    const skewMin = (internals.skewPositiveMin ?? 0.015);
-    switch (id) {
-      case 'L1': return putWall != null && Math.abs(nqPrice - putWall) <= wallProx && ivPctile != null && ivPctile <= ivLow && skew != null && skew > skewMin;
-      case 'L4': return regime === 'neutral' && gammaFlip != null && (nqPrice - gammaFlip) > 0 && ivPctile != null && ivPctile <= ivLow;
-      case 'L3': return regime === 'strong_negative' && gammaFlip != null && (nqPrice - gammaFlip) > 0;
-      case 'S3': return callWall != null && Math.abs(nqPrice - callWall) <= wallProx && gammaFlip != null && (nqPrice - gammaFlip) < 0;
-      case 'S1': return callWall != null && Math.abs(nqPrice - callWall) <= wallProx && ivPctile != null && ivPctile >= ivHigh && skew != null && skew > skewMin;
-      case 'S2': return callWall != null && Math.abs(nqPrice - callWall) <= wallProx && ivPctile != null && ivPctile >= ivHigh;
-      default: return false;
-    }
+  // Strategy thresholds (from internals with defaults matching strategy code)
+  const wallProx = internals.wallProximity ?? 50;
+  const ivLowMax = internals.ivPctileLowMax ?? 0.20;
+  const ivHighMin = internals.ivPctileHighMin ?? 0.80;
+  const skewMin = internals.skewPositiveMin ?? 0.015;
+  const neutralRegimeId = internals.neutralRegime ?? 'neutral';
+  const strongNegRegimeId = internals.strongNegativeRegime ?? 'strong_negative';
+
+  // Distances (signed where useful)
+  const distFromPutWall = (nqPrice != null && putWall != null) ? (nqPrice - putWall) : null;
+  const distFromCallWall = (nqPrice != null && callWall != null) ? (nqPrice - callWall) : null;
+  const distFromFlip = (nqPrice != null && gammaFlip != null) ? (nqPrice - gammaFlip) : null;
+
+  // Per-condition status. label = chip text, met = bool (or null = unknown).
+  const conditions = {
+    putWallNear: {
+      label: distFromPutWall != null
+        ? `putWall Δ${Math.abs(distFromPutWall).toFixed(0)}≤${wallProx}`
+        : `putWall ≤${wallProx}`,
+      met: distFromPutWall != null && Math.abs(distFromPutWall) <= wallProx,
+    },
+    callWallNear: {
+      label: distFromCallWall != null
+        ? `callWall Δ${Math.abs(distFromCallWall).toFixed(0)}≤${wallProx}`
+        : `callWall ≤${wallProx}`,
+      met: distFromCallWall != null && Math.abs(distFromCallWall) <= wallProx,
+    },
+    aboveFlip: {
+      label: distFromFlip != null
+        ? `above flip (${distFromFlip >= 0 ? '+' : ''}${distFromFlip.toFixed(0)})`
+        : 'above flip',
+      met: distFromFlip != null && distFromFlip > 0,
+    },
+    belowFlip: {
+      label: distFromFlip != null
+        ? `below flip (${distFromFlip >= 0 ? '+' : ''}${distFromFlip.toFixed(0)})`
+        : 'below flip',
+      met: distFromFlip != null && distFromFlip < 0,
+    },
+    ivLow: {
+      label: ivPctile != null
+        ? `IV %ile ${(ivPctile*100).toFixed(0)}≤${(ivLowMax*100).toFixed(0)}`
+        : `IV %ile ≤${(ivLowMax*100).toFixed(0)}`,
+      met: ivPctile != null && ivPctile <= ivLowMax,
+    },
+    ivHigh: {
+      label: ivPctile != null
+        ? `IV %ile ${(ivPctile*100).toFixed(0)}≥${(ivHighMin*100).toFixed(0)}`
+        : `IV %ile ≥${(ivHighMin*100).toFixed(0)}`,
+      met: ivPctile != null && ivPctile >= ivHighMin,
+    },
+    skewPos: {
+      label: skew != null
+        ? `skew ${(skew*100).toFixed(2)}%>+${(skewMin*100).toFixed(1)}%`
+        : `skew>+${(skewMin*100).toFixed(1)}%`,
+      met: skew != null && skew > skewMin,
+    },
+    regimeNeutral: {
+      label: regime ? `regime=${regime}` : `regime=${neutralRegimeId}`,
+      met: regime === neutralRegimeId,
+    },
+    regimeStrongNeg: {
+      label: regime ? `regime=${regime}` : `regime=${strongNegRegimeId}`,
+      met: regime === strongNegRegimeId,
+    },
   };
 
-  const firingRule = RULES.find(r => ruleFires(r.id));
+  const ruleStatus = (rule) => {
+    const items = rule.conditionIds.map(id => conditions[id]);
+    const metCount = items.filter(c => c.met).length;
+    return { items, metCount, total: items.length, fires: metCount === items.length };
+  };
+
+  // Highest-priority firing rule (matches strategy's findFiringRule logic)
+  const firingRule = [...RULES]
+    .sort((a, b) => b.priority - a.priority)
+    .find(r => ruleStatus(r).fires);
+
+  // Closest-to-firing rule when none fire (most conditions met, ties broken by priority)
+  const closestRule = !firingRule
+    ? [...RULES]
+        .map(r => ({ rule: r, ...ruleStatus(r) }))
+        .sort((a, b) => (b.metCount - a.metCount) || (b.rule.priority - a.rule.priority))[0]
+    : null;
+
+  const inCooldown = cooldownData?.in_cooldown && cooldownData?.seconds_remaining > 0;
+
+  // Blockers — things preventing any signal regardless of rule status
+  const blockers = [];
+  if (!inEntryWindow) blockers.push(`Outside entry window (${String(startH).padStart(2,'0')}:00–${String(endH).padStart(2,'0')}:00 ET)`);
+  if (pastEodCutoff) blockers.push('Past EOD force-flat (16:40 ET)');
+  if (inCooldown) blockers.push(`Cooldown ${Math.floor(cooldownData.seconds_remaining/60)}:${String(cooldownData.seconds_remaining%60).padStart(2,'0')}`);
+  if (!ivData) blockers.push('No IV data');
+  if (!gexLevels) blockers.push('No GEX levels');
+  if (ivPctile == null && ivData) blockers.push(`IV %ile warming up (${internals.liveIVSamples ?? 0} samples)`);
 
   const getBadge = () => {
     if (position?.side) return { color: position.side === 'long' ? 'bg-green-600' : 'bg-red-600', text: position.side.toUpperCase() };
     if (pastEodCutoff) return { color: 'bg-orange-700', text: 'EOD-FLAT' };
     if (!inEntryWindow) return { color: 'bg-gray-600', text: 'OUT-OF-WINDOW' };
+    if (inCooldown) return { color: 'bg-yellow-700', text: 'COOLDOWN' };
     if (firingRule) return { color: firingRule.side === 'LONG' ? 'bg-green-700' : 'bg-red-700', text: `${firingRule.id} ARMED` };
+    if (closestRule) return { color: 'bg-blue-700', text: `${closestRule.rule.id} ${closestRule.metCount}/${closestRule.total}` };
     return { color: 'bg-blue-700', text: 'WATCHING' };
   };
   const badge = getBadge();
@@ -158,52 +251,125 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
         {/* Feature snapshot */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5">
           <div className="grid grid-cols-2 gap-x-2 text-[15px]">
-            <div className="flex justify-between"><span className="text-gray-300">IV</span><span className="text-white font-mono">{ivVal != null ? `${(ivVal*100).toFixed(1)}%` : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">Skew</span><span className={`font-mono ${skew != null && skew > 0.015 ? 'text-yellow-300' : 'text-white'}`}>{skew != null ? `${(skew*100).toFixed(2)}%` : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">IV %ile</span><span className={`font-mono ${ivPctile != null && ivPctile <= 0.20 ? 'text-green-400' : ivPctile != null && ivPctile >= 0.80 ? 'text-red-400' : 'text-white'}`}>{ivPctile != null ? `${(ivPctile*100).toFixed(0)}%` : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">Regime</span><span className="text-white font-mono text-[13px]">{regime || '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">PutWall</span><span className="text-white font-mono">{putWall != null ? putWall.toFixed(0) : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">CallWall</span><span className="text-white font-mono">{callWall != null ? callWall.toFixed(0) : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">GammaFlip</span><span className="text-white font-mono">{gammaFlip != null ? gammaFlip.toFixed(0) : '--'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-300">NQ</span><span className="text-white font-mono">{nqPrice != null ? nqPrice.toFixed(2) : '--'}</span></div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">IV</span>
+              <span className="text-white font-mono">{ivVal != null ? `${(ivVal*100).toFixed(1)}%` : '--'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">Skew</span>
+              <span className={`font-mono ${conditions.skewPos.met ? 'text-yellow-300' : 'text-white'}`}>{skew != null ? `${(skew*100).toFixed(2)}%` : '--'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">IV %ile</span>
+              <span className={`font-mono ${conditions.ivLow.met ? 'text-green-400' : conditions.ivHigh.met ? 'text-red-400' : 'text-white'}`}>{ivPctile != null ? `${(ivPctile*100).toFixed(0)}%` : '--'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">Regime</span>
+              <span className="text-white font-mono text-[13px]">{regime || '--'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">PutWall</span>
+              <span className={`font-mono ${conditions.putWallNear.met ? 'text-green-400' : 'text-white'}`}>
+                {putWall != null ? putWall.toFixed(0) : '--'}
+                {distFromPutWall != null && <span className="text-gray-400 text-[13px] ml-1">(Δ{Math.abs(distFromPutWall).toFixed(0)})</span>}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">CallWall</span>
+              <span className={`font-mono ${conditions.callWallNear.met ? 'text-red-400' : 'text-white'}`}>
+                {callWall != null ? callWall.toFixed(0) : '--'}
+                {distFromCallWall != null && <span className="text-gray-400 text-[13px] ml-1">(Δ{Math.abs(distFromCallWall).toFixed(0)})</span>}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">GammaFlip</span>
+              <span className="text-white font-mono">
+                {gammaFlip != null ? gammaFlip.toFixed(0) : '--'}
+                {distFromFlip != null && <span className={`text-[13px] ml-1 ${distFromFlip > 0 ? 'text-green-400' : 'text-red-400'}`}>({distFromFlip >= 0 ? '+' : ''}{distFromFlip.toFixed(0)})</span>}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">NQ</span>
+              <span className="text-white font-mono">{nqPrice != null ? nqPrice.toFixed(2) : '--'}</span>
+            </div>
           </div>
         </div>
 
-        {/* Rules table */}
-        <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-          <div className="grid grid-cols-[auto_auto_1fr_auto] gap-x-2 text-[15px] mb-0.5">
-            <span className="text-gray-400 font-medium">Rule</span>
-            <span className="text-gray-400 font-medium">Side</span>
-            <span className="text-gray-400 font-medium">Conditions</span>
-            <span className="text-gray-400 font-medium text-right">Stop / Tgt</span>
-          </div>
-          {RULES.map(r => {
-            const fires = ruleFires(r.id);
-            const rowBg = fires
-              ? r.side === 'LONG' ? 'bg-green-900/40 border-green-600/50' : 'bg-red-900/40 border-red-600/50'
-              : 'border-gray-600';
-            return (
-              <div key={r.id} className={`grid grid-cols-[auto_auto_1fr_auto] gap-x-2 text-[15px] py-0.5 border-t ${rowBg} ${fires ? 'rounded px-1 -mx-1' : ''}`}>
-                <span className={`font-mono font-bold ${fires ? 'text-white' : 'text-gray-300'}`}>{r.id}</span>
-                <span className={`font-mono ${r.side === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>{r.side}</span>
-                <span className={`text-[13px] ${fires ? 'text-white' : 'text-gray-400'}`}>{r.desc}</span>
-                <span className="text-gray-300 font-mono text-right">{r.stop} / {r.tgt}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Recent eval log */}
-        {evalLog.length > 0 && (
+        {/* Blockers */}
+        {blockers.length > 0 && (
           <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-            <div className="text-gray-400 text-[15px] mb-1">Recent evaluations</div>
-            {evalLog.slice(-5).map((e, i) => (
-              <div key={i} className="grid grid-cols-[auto_auto_1fr] gap-x-2 text-[13px] py-0.5">
-                <span className="text-gray-500 font-mono">{e.time}</span>
-                <span className="text-gray-300 font-mono">{e.price?.toFixed(2)}</span>
-                <span className={`${e.fired ? 'text-green-400 font-bold' : 'text-gray-400'}`}>{e.result}</span>
+            <div className="text-gray-400 text-[13px] mb-0.5">Blocked:</div>
+            <div className="space-y-0.5 text-[13px]">
+              {blockers.map((b, i) => (
+                <div key={i} className="text-yellow-400">• {b}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Per-rule condition breakdown */}
+        <div className="bg-gray-700 rounded p-1.5 mb-1.5">
+          <div className="text-gray-400 text-[13px] mb-1">Rule conditions</div>
+          <div className="space-y-1">
+            {RULES.map(r => {
+              const { items, metCount, total, fires } = ruleStatus(r);
+              const rowBg = fires
+                ? (r.side === 'LONG' ? 'bg-green-900/40 border border-green-600/50' : 'bg-red-900/40 border border-red-600/50')
+                : 'bg-gray-800/40 border border-gray-700';
+              const sideColor = r.side === 'LONG' ? 'text-green-400' : 'text-red-400';
+              return (
+                <div key={r.id} className={`rounded px-1.5 py-1 ${rowBg}`}>
+                  <div className="flex items-center gap-2 text-[14px] mb-0.5">
+                    <span className={`font-mono font-bold w-7 ${fires ? 'text-white' : 'text-gray-200'}`}>{r.id}</span>
+                    <span className={`font-mono text-[12px] w-12 ${sideColor}`}>{r.side}</span>
+                    <span className={`font-mono text-[12px] flex-shrink-0 ${fires ? 'text-white font-bold' : 'text-gray-400'}`}>
+                      {metCount}/{total}
+                    </span>
+                    <span className="flex-1" />
+                    <span className="text-gray-400 font-mono text-[12px]">SL {r.stop} / TP {r.tgt}</span>
+                    {fires && <span className={`font-bold animate-pulse ${sideColor}`}>READY</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {items.map((c, i) => (
+                      <span
+                        key={i}
+                        className={`px-1.5 py-0.5 rounded text-[12px] font-mono ${
+                          c.met
+                            ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                            : 'bg-gray-800 text-gray-400 border border-gray-700'
+                        }`}
+                      >
+                        {c.met ? '✓' : '○'} {c.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Recent eval log (expandable) */}
+        {evalLog.length > 0 && (
+          <div className="mb-1.5">
+            <button
+              onClick={() => setShowEvalLog(!showEvalLog)}
+              className="text-[13px] text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+            >
+              <span>{showEvalLog ? '▼' : '▶'}</span>
+              <span>Eval log ({evalLog.length})</span>
+            </button>
+            {showEvalLog && (
+              <div className="mt-1 bg-gray-700 rounded p-1.5 space-y-0.5 text-[12px] font-mono max-h-40 overflow-y-auto">
+                {[...evalLog].reverse().map((e, i) => (
+                  <div key={i} className={`flex gap-2 ${e.fired ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
+                    <span className="text-gray-500 flex-shrink-0">{e.time}</span>
+                    <span className="flex-shrink-0">{e.price?.toFixed(1)}</span>
+                    <span className="truncate">{e.result}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
 
