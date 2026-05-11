@@ -232,65 +232,67 @@ const GexLt3mCrossoverPanel = ({ socket, quotes }) => {
           </div>
         )}
 
-        {/* Per-rule pair-sign grid */}
+        {/* Per-rule pair-sign grid — compact: rule meta inline, single-line cells */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-          <div className="text-gray-400 text-[13px] mb-1">
-            Active rules ({activeRules.length}) — pair sign vs 1m LT levels
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-gray-400 text-[13px]">
+              Active rules ({activeRules.length}) · {nearFlipCount > 0 ? <span className="text-yellow-400">{nearFlipCount} near flip</span> : 'sign vs 1m LT'}
+            </span>
+            <span className="text-[11px] text-gray-500">↑=above ↓=below · hover for diff/last flip</span>
           </div>
           {activeRules.length === 0 && (
             <div className="text-gray-500 text-[13px]">No active rules.</div>
           )}
-          <div className="space-y-1.5">
+          <div className="space-y-0.5">
             {activeRules.map(rule => {
               const grid = pairGrid.find(g => g.ruleId === rule.id);
               const sideColor = rule.side === 'long' ? 'text-green-400' : 'text-red-400';
-              const sideBorder = rule.side === 'long' ? 'border-green-700/40' : 'border-red-700/40';
+              const sideBg = rule.side === 'long' ? 'bg-green-900/10' : 'bg-red-900/10';
               return (
-                <div key={rule.id} className={`rounded px-1.5 py-1 bg-gray-800/50 border ${sideBorder}`}>
-                  <div className="flex items-center gap-2 text-[14px] mb-1">
-                    <span className="font-mono font-bold text-white w-24 flex-shrink-0">{rule.id}</span>
-                    <span className={`font-mono text-[12px] w-12 flex-shrink-0 ${sideColor}`}>{rule.side.toUpperCase()}</span>
-                    <span className="text-gray-300 font-mono text-[12px] flex-shrink-0">{rule.gexType}</span>
-                    <span className="flex-1" />
-                    <span className="text-gray-400 font-mono text-[12px]">
-                      TP{rule.targetPts} SL{rule.stopPts} mh{rule.maxHoldBars}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
+                <div
+                  key={rule.id}
+                  className={`flex items-center gap-1 rounded px-1 py-0.5 ${sideBg}`}
+                >
+                  <span className={`font-mono font-bold text-[12px] w-[72px] flex-shrink-0 ${sideColor}`}>{rule.id}</span>
+                  <span
+                    className="font-mono text-[11px] text-gray-400 w-[80px] flex-shrink-0 truncate"
+                    title={`${rule.gexType} · TP${rule.targetPts} SL${rule.stopPts} mh${rule.maxHoldBars}`}
+                  >
+                    {rule.gexType}
+                  </span>
+                  <div className="grid grid-cols-5 gap-0.5 flex-1">
                     {(grid?.cells || []).map((c, i) => {
                       const ltLabel = `L${c.ltIdx + 1}`;
                       const arrow = c.sign > 0 ? '↑' : c.sign < 0 ? '↓' : '·';
                       const arrowColor = c.sign > 0 ? 'text-green-400' : c.sign < 0 ? 'text-red-400' : 'text-gray-500';
                       const nearFlip = c.diff != null && Math.abs(c.diff) <= NEAR_FLIP_THRESHOLD && c.sign !== 0;
-                      const bg = nearFlip
-                        ? 'bg-yellow-900/40 border-yellow-600/50'
-                        : 'bg-gray-900/50 border-gray-700/50';
-                      // Only show flip arrow that confirms the rule's direction
                       const matchesRuleDir =
                         (rule.direction === 'gex_above_lt' && c.sign > 0) ||
                         (rule.direction === 'gex_below_lt' && c.sign < 0);
+                      const bg = nearFlip
+                        ? 'bg-yellow-900/50 border border-yellow-600/60'
+                        : matchesRuleDir
+                          ? 'bg-gray-900/40 border border-gray-700/60'
+                          : 'bg-gray-900/20 border border-gray-800/40';
                       const diffStr = c.diff != null
-                        ? (c.diff >= 0 ? `+${c.diff.toFixed(0)}` : c.diff.toFixed(0))
+                        ? (c.diff >= 0 ? `+${Math.round(c.diff)}` : `${Math.round(c.diff)}`)
                         : '—';
                       return (
                         <div
                           key={i}
-                          className={`rounded border px-1 py-0.5 ${bg}`}
+                          className={`rounded px-1 leading-tight ${bg}`}
                           title={
                             c.diff != null
-                              ? `${rule.gexType}=${c.gexPrice?.toFixed(1)} ${ltLabel}=${c.ltPrice?.toFixed(1)} Δ=${diffStr} last flip ${formatTimeSince(c.lastFlipTs, nowMs)}`
-                              : 'no data'
+                              ? `${ltLabel}: ${rule.gexType}=${c.gexPrice?.toFixed(1)} LT=${c.ltPrice?.toFixed(1)} Δ=${diffStr} · last flip ${formatTimeSince(c.lastFlipTs, nowMs)}`
+                              : `${ltLabel}: no data`
                           }
                         >
-                          <div className="flex justify-between items-baseline">
-                            <span className="text-[11px] text-gray-400 font-mono">{ltLabel}</span>
-                            <span className={`text-[14px] font-mono font-bold ${arrowColor} ${nearFlip ? 'animate-pulse' : ''}`}>{arrow}</span>
-                          </div>
-                          <div className={`text-[11px] font-mono ${matchesRuleDir ? 'text-white' : 'text-gray-400'}`}>
-                            Δ {diffStr}
-                          </div>
-                          <div className="text-[10px] font-mono text-gray-500">
-                            {formatTimeSince(c.lastFlipTs, nowMs)}
+                          <div className="flex items-center justify-between gap-0.5">
+                            <span className="text-[10px] text-gray-500 font-mono">{ltLabel}</span>
+                            <span className={`text-[12px] font-mono font-bold ${arrowColor} ${nearFlip ? 'animate-pulse' : ''}`}>{arrow}</span>
+                            <span className={`text-[10px] font-mono ${matchesRuleDir ? 'text-white' : 'text-gray-500'}`}>
+                              {diffStr}
+                            </span>
                           </div>
                         </div>
                       );
@@ -299,9 +301,6 @@ const GexLt3mCrossoverPanel = ({ socket, quotes }) => {
                 </div>
               );
             })}
-          </div>
-          <div className="text-[11px] text-gray-500 mt-1">
-            ↑ = GEX above LT · ↓ = GEX below LT · highlighted = within {NEAR_FLIP_THRESHOLD}pts of flip
           </div>
         </div>
 
