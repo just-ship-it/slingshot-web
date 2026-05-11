@@ -326,8 +326,7 @@ const Dashboard = ({
 
   return (
     <div className="dashboard-split">
-      {/* Left column: info panels stacked.
-          Active strategy panels first, then GEX, multi-account, alerts. */}
+      {/* Column 1 (1/5): strategy panels */}
       <div className="dashboard-left">
         {isStrategyEnabled('gex-flip-ivpct') && (
           <div className="panel-gex-flip-ivpct">
@@ -359,6 +358,10 @@ const Dashboard = ({
             <LTCandleRegimePanel socket={socket} quotes={quotes} />
           </div>
         )}
+      </div>
+
+      {/* Column 2 (1/5): GEX levels, accounts, alerts */}
+      <div className="dashboard-mid">
         <div className="panel-gex">
           <TabbedGexPanel
             nqGexData={gexData}
@@ -383,7 +386,7 @@ const Dashboard = ({
         </div>
       </div>
 
-      {/* Right column: chart with NQ/ES toggle in header */}
+      {/* Column 3 (3/5): chart with NQ/ES toggle in header */}
       <div className="dashboard-right">
         <div className="panel-chart">
           <GexChart
