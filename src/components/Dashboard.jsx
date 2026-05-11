@@ -5,6 +5,7 @@ import IVSkewPanel from './IVSkewPanel';
 import ShortDTEIVPanel from './ShortDTEIVPanel';
 import LTCandleRegimePanel from './LTCandleRegimePanel';
 import GexFlipIvpctPanel from './GexFlipIvpctPanel';
+import GexLt3mCrossoverPanel from './GexLt3mCrossoverPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
@@ -331,6 +332,11 @@ const Dashboard = ({
         {isStrategyEnabled('gex-flip-ivpct') && (
           <div className="panel-gex-flip-ivpct">
             <GexFlipIvpctPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('gex-lt-3m-crossover') && (
+          <div className="panel-gex-lt-3m-crossover">
+            <GexLt3mCrossoverPanel socket={socket} quotes={quotes} />
           </div>
         )}
         {isStrategyEnabled('iv-skew-gex') && (

@@ -483,6 +483,16 @@ export const api = {
     }
   },
 
+  // GEX-LT-3M-Crossover strategy status from multi-strategy engine
+  async getGexLt3mCrossoverStatus() {
+    try {
+      return await apiClient.get('/api/strategy/gex-lt-3m-crossover/status');
+    } catch (error) {
+      console.log('GEX-LT-3M-Crossover status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {
