@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import PositionBanner from './PositionBanner';
 
+// Rule conditions (display-only metadata). Effective stops/targets come from
+// the backend's getInternalState().activeRules, which reflects any per-rule or
+// global overrides (e.g. the 2026-05-12 tight-stop refit: 60/200 globals).
 const RULES = [
-  { id: 'L1', side: 'LONG',  priority: 100, conditionIds: ['putWallNear', 'ivLow', 'skewPos'],     stop: 113, tgt: 198 },
-  { id: 'L4', side: 'LONG',  priority: 90,  conditionIds: ['regimeNeutral', 'aboveFlip', 'ivLow'], stop: 106, tgt: 187 },
-  { id: 'L3', side: 'LONG',  priority: 80,  conditionIds: ['regimeStrongNeg', 'aboveFlip'],        stop: 184, tgt: 278 },
-  { id: 'S3', side: 'SHORT', priority: 100, conditionIds: ['callWallNear', 'belowFlip'],           stop: 114, tgt: 196 },
-  { id: 'S1', side: 'SHORT', priority: 90,  conditionIds: ['callWallNear', 'ivHigh', 'skewPos'],   stop: 131, tgt: 211 },
-  { id: 'S2', side: 'SHORT', priority: 80,  conditionIds: ['callWallNear', 'ivHigh'],              stop: 129, tgt: 211 },
+  { id: 'L1', side: 'LONG',  priority: 100, conditionIds: ['putWallNear', 'ivLow', 'skewPos'] },
+  { id: 'L4', side: 'LONG',  priority: 90,  conditionIds: ['regimeNeutral', 'aboveFlip', 'ivLow'] },
+  { id: 'L3', side: 'LONG',  priority: 80,  conditionIds: ['regimeStrongNeg', 'aboveFlip'] },
+  { id: 'S3', side: 'SHORT', priority: 100, conditionIds: ['callWallNear', 'belowFlip'] },
+  { id: 'S1', side: 'SHORT', priority: 90,  conditionIds: ['callWallNear', 'ivHigh', 'skewPos'] },
+  { id: 'S2', side: 'SHORT', priority: 80,  conditionIds: ['callWallNear', 'ivHigh'] },
 ];
 
 function getEtNow() {
@@ -128,7 +131,11 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
 
   const startH = internals.entryWindowStartHour ?? 4;
   const endH = internals.entryWindowEndHour ?? 13;
-  const inEntryWindow = etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun' && etNow.hour >= startH && etNow.hour < endH;
+  const blockedHours = Array.isArray(internals.blockedHoursEt) ? internals.blockedHoursEt : [];
+  const inEntryWindow =
+    etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun'
+    && etNow.hour >= startH && etNow.hour < endH
+    && !blockedHours.includes(etNow.hour);
 
   // EOD cutoff comes from EOD_CUTOFF_ET (mirrored from trade-orchestrator).
   // Empty string means orchestrator-side EOD flat is disabled.
@@ -378,6 +385,37 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
           </div>
         )}
 
+        {/* Risk management (tight-stop refit 2026-05-12) */}
+        <div className="bg-gray-700 rounded p-1.5 mb-1.5">
+          <div className="text-gray-400 text-[13px] mb-1">Risk management</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[13px] font-mono">
+            <div className="text-gray-400">Stop / Target</div>
+            <div className="text-gray-200">
+              {internals.globalStopPts != null && internals.globalTargetPts != null
+                ? <>SL <span className="text-red-300">{internals.globalStopPts}pt</span> / TP <span className="text-green-300">{internals.globalTargetPts}pt</span></>
+                : <span className="text-gray-500">per-rule (no global override)</span>}
+            </div>
+            <div className="text-gray-400">Breakeven</div>
+            <div className="text-gray-200">
+              {internals.breakevenStop
+                ? <>arms @ +<span className="text-blue-300">{internals.breakevenTrigger}pt</span> MFE → stop = entry+<span className="text-blue-300">{internals.breakevenOffset}pt</span></>
+                : <span className="text-gray-500">off</span>}
+            </div>
+            <div className="text-gray-400">Trailing</div>
+            <div className="text-gray-200">
+              {internals.trailingTrigger != null && internals.trailingOffset != null
+                ? <>arms @ +{internals.trailingTrigger}pt → trail {internals.trailingOffset}pt</>
+                : <span className="text-gray-500">off</span>}
+            </div>
+            <div className="text-gray-400">Blocked hours (ET)</div>
+            <div className="text-gray-200">
+              {Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
+                ? internals.blockedHoursEt.map(h => String(h).padStart(2, '0')).join(', ')
+                : <span className="text-gray-500">none</span>}
+            </div>
+          </div>
+        </div>
+
         {/* Per-rule condition breakdown */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5">
           <div className="text-gray-400 text-[13px] mb-1">Rule conditions</div>
@@ -388,8 +426,12 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
                 ? (r.side === 'LONG' ? 'bg-green-900/40 border border-green-600/50' : 'bg-red-900/40 border border-red-600/50')
                 : 'bg-gray-800/40 border border-gray-700';
               const sideColor = r.side === 'LONG' ? 'text-green-400' : 'text-red-400';
+              const apiRule = (internals.activeRules || []).find(a => a.id === r.id);
+              const effStop = apiRule?.stopPts ?? internals.globalStopPts ?? null;
+              const effTgt  = apiRule?.targetPts ?? internals.globalTargetPts ?? null;
+              const isDisabled = (internals.disabledRules || []).includes(r.id);
               return (
-                <div key={r.id} className={`rounded px-1.5 py-1 ${rowBg}`}>
+                <div key={r.id} className={`rounded px-1.5 py-1 ${rowBg} ${isDisabled ? 'opacity-50' : ''}`}>
                   <div className="flex items-center gap-2 text-[14px] mb-0.5">
                     <span className={`font-mono font-bold w-7 ${fires ? 'text-white' : 'text-gray-200'}`}>{r.id}</span>
                     <span className={`font-mono text-[12px] w-12 ${sideColor}`}>{r.side}</span>
@@ -397,8 +439,10 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
                       {metCount}/{total}
                     </span>
                     <span className="flex-1" />
-                    <span className="text-gray-400 font-mono text-[12px]">SL {r.stop} / TP {r.tgt}</span>
-                    {fires && <span className={`font-bold animate-pulse ${sideColor}`}>READY</span>}
+                    {isDisabled
+                      ? <span className="text-gray-500 font-mono text-[12px] italic">disabled</span>
+                      : <span className="text-gray-400 font-mono text-[12px]">SL {effStop ?? '?'} / TP {effTgt ?? '?'}</span>}
+                    {fires && !isDisabled && <span className={`font-bold animate-pulse ${sideColor}`}>READY</span>}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {items.map((c, i) => (
