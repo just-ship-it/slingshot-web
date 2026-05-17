@@ -69,6 +69,8 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   const [etNow, setEtNow] = useState(getEtNow());
   const [cooldownData, setCooldownData] = useState(null);
   const [showEvalLog, setShowEvalLog] = useState(false);
+  const [showRisk, setShowRisk] = useState(false);
+  const [showIvDetail, setShowIvDetail] = useState(false);
   const [evalCountdown, setEvalCountdown] = useState(secondsTo5mBoundary());
 
   useEffect(() => {
@@ -285,49 +287,26 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
       <div className="flex justify-between items-center mb-1.5 flex-shrink-0 gap-2">
         <div className="flex items-center gap-1.5">
           <h3 className="text-[15px] font-bold text-white">GEX-FLIP-IVPCT</h3>
-          {/* IV history compact indicator → full detail via native tooltip */}
-          <span
-            className={`px-1 rounded text-[11px] font-mono cursor-help ${
+          {/* IV history compact indicator → click for full detail */}
+          <button
+            type="button"
+            onClick={() => { setShowIvDetail(v => !v); setShowRisk(false); }}
+            className={`px-1 rounded text-[11px] font-mono hover:brightness-125 transition ${
               (internals.liveIVSamples ?? 0) >= 200 ? 'bg-green-900/40 text-green-300'
               : (internals.liveIVSamples ?? 0) > 0 ? 'bg-yellow-900/40 text-yellow-300'
               : 'bg-gray-700/60 text-gray-400'
-            }`}
-            title={[
-              `IV history: ${internals.liveIVSamples ?? 0} samples`,
-              internals.redisAttached
-                ? `persisted to Redis (${internals.redisKey || 'default key'})`
-                : 'in-memory only — buffer resets on restart',
-              internals.ivHistoryOldest && internals.ivHistoryNewest
-                ? `span ${Math.round((internals.ivHistoryNewest - internals.ivHistoryOldest) / (60 * 60 * 1000))}h`
-                : null,
-            ].filter(Boolean).join('\n')}
+            } ${showIvDetail ? 'ring-1 ring-white/40' : ''}`}
           >
             IV {internals.liveIVSamples ?? 0}
-          </span>
-          {/* Risk management compact indicator → full detail via native tooltip */}
-          <span
-            className="px-1 rounded text-[11px] font-mono cursor-help bg-gray-700/60 text-gray-300"
-            title={[
-              `STOPS / TARGETS`,
-              internals.globalStopPts != null && internals.globalTargetPts != null
-                ? `  SL ${internals.globalStopPts}pt / TP ${internals.globalTargetPts}pt (global override)`
-                : `  per-rule (no global override)`,
-              `BREAKEVEN`,
-              internals.breakevenStop
-                ? `  arms @ +${internals.breakevenTrigger}pt MFE → stop = entry +${internals.breakevenOffset}pt`
-                : `  off`,
-              `TRAILING`,
-              internals.trailingTrigger != null && internals.trailingOffset != null
-                ? `  arms @ +${internals.trailingTrigger}pt → trail ${internals.trailingOffset}pt`
-                : `  off`,
-              `BLOCKED HOURS (ET)`,
-              Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
-                ? `  ${internals.blockedHoursEt.map(h => String(h).padStart(2, '0')).join(', ')}`
-                : `  none`,
-            ].join('\n')}
+          </button>
+          {/* Risk management compact indicator → click for full detail */}
+          <button
+            type="button"
+            onClick={() => { setShowRisk(v => !v); setShowIvDetail(false); }}
+            className={`px-1 rounded text-[11px] font-mono hover:brightness-125 transition bg-gray-700/60 text-gray-300 ${showRisk ? 'ring-1 ring-white/40' : ''}`}
           >
             ⚙ risk
-          </span>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -341,6 +320,62 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
       </div>
 
       <PositionBanner productPosition={status?.product_position} />
+
+      {/* Toggleable detail panels (IV history / risk config) — click header chip to open */}
+      {showIvDetail && (
+        <div className="bg-gray-900 border border-gray-600 rounded p-1.5 mb-1.5 text-[12px] font-mono">
+          <div className="text-gray-400 mb-0.5">IV history</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <div className="text-gray-400">Samples</div>
+            <div className={(internals.liveIVSamples ?? 0) >= 200 ? 'text-green-300' : (internals.liveIVSamples ?? 0) > 0 ? 'text-yellow-300' : 'text-gray-500'}>
+              {internals.liveIVSamples ?? 0}
+            </div>
+            <div className="text-gray-400">Storage</div>
+            <div className={internals.redisAttached ? 'text-green-300' : 'text-yellow-300'}>
+              {internals.redisAttached ? `Redis (${internals.redisKey || 'default'})` : 'in-mem (resets on restart)'}
+            </div>
+            {internals.ivHistoryOldest && internals.ivHistoryNewest && (
+              <>
+                <div className="text-gray-400">Span</div>
+                <div className="text-gray-200">
+                  {Math.round((internals.ivHistoryNewest - internals.ivHistoryOldest) / (60 * 60 * 1000))}h
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {showRisk && (
+        <div className="bg-gray-900 border border-gray-600 rounded p-1.5 mb-1.5 text-[12px] font-mono">
+          <div className="text-gray-400 mb-0.5">Risk management</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <div className="text-gray-400">Stop / Target</div>
+            <div className="text-gray-200">
+              {internals.globalStopPts != null && internals.globalTargetPts != null
+                ? <>SL <span className="text-red-300">{internals.globalStopPts}pt</span> / TP <span className="text-green-300">{internals.globalTargetPts}pt</span></>
+                : <span className="text-gray-500">per-rule (no global override)</span>}
+            </div>
+            <div className="text-gray-400">Breakeven</div>
+            <div className="text-gray-200">
+              {internals.breakevenStop
+                ? <>arms @ +<span className="text-blue-300">{internals.breakevenTrigger}pt</span> MFE → entry +<span className="text-blue-300">{internals.breakevenOffset}pt</span></>
+                : <span className="text-gray-500">off</span>}
+            </div>
+            <div className="text-gray-400">Trailing</div>
+            <div className="text-gray-200">
+              {internals.trailingTrigger != null && internals.trailingOffset != null
+                ? <>arms @ +{internals.trailingTrigger}pt → trail {internals.trailingOffset}pt</>
+                : <span className="text-gray-500">off</span>}
+            </div>
+            <div className="text-gray-400">Blocked hours (ET)</div>
+            <div className="text-gray-200">
+              {Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
+                ? internals.blockedHoursEt.map(h => String(h).padStart(2, '0')).join(', ')
+                : <span className="text-gray-500">none</span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col flex-1 justify-between min-h-0 overflow-y-auto">
         {/* Window + ET + EOD — single status line */}
