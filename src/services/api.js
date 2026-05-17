@@ -493,6 +493,16 @@ export const api = {
     }
   },
 
+  // GEX-LEVEL-FADE strategy status from multi-strategy engine
+  async getGexLevelFadeStatus() {
+    try {
+      return await apiClient.get('/api/strategy/gex-level-fade/status');
+    } catch (error) {
+      console.log('GEX-LEVEL-FADE status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {
