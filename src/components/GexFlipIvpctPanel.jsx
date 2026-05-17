@@ -367,6 +367,12 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
                 ? <>arms @ +{internals.trailingTrigger}pt → trail {internals.trailingOffset}pt</>
                 : <span className="text-gray-500">off</span>}
             </div>
+            <div className="text-gray-400">Fib retrace</div>
+            <div className="text-gray-200">
+              {internals.fibRetrace
+                ? <>arms @ +<span className="text-purple-300">{internals.fibActivationMFE}pt</span> MFE → bar close past <span className="text-purple-300">{Math.round(internals.fibRetracePct * 1000) / 10}%</span> retrace</>
+                : <span className="text-gray-500">off</span>}
+            </div>
             <div className="text-gray-400">Blocked hours (ET)</div>
             <div className="text-gray-200">
               {Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
