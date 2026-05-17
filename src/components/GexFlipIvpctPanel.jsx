@@ -14,6 +14,20 @@ const RULES = [
   { id: 'S2', side: 'SHORT', priority: 80,  conditionIds: ['callWallNear', 'ivHigh'] },
 ];
 
+// Short tokens used by the per-rule one-liner. Keeps the compact row readable
+// at narrow sidebar widths while preserving condition identity.
+const COND_ABBREV = {
+  putWallNear:      'PW',
+  callWallNear:     'CW',
+  aboveFlip:        'AF',
+  belowFlip:        'BF',
+  ivLow:            'IV↓',
+  ivHigh:           'IV↑',
+  skewPos:          'SK',
+  regimeNeutral:    'NEU',
+  regimeStrongNeg:  'NEG',
+};
+
 function getEtNow() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
@@ -269,7 +283,52 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-800 rounded-lg p-2">
       <div className="flex justify-between items-center mb-1.5 flex-shrink-0 gap-2">
-        <h3 className="text-[15px] font-bold text-white">GEX-FLIP-IVPCT</h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[15px] font-bold text-white">GEX-FLIP-IVPCT</h3>
+          {/* IV history compact indicator → full detail via native tooltip */}
+          <span
+            className={`px-1 rounded text-[11px] font-mono cursor-help ${
+              (internals.liveIVSamples ?? 0) >= 200 ? 'bg-green-900/40 text-green-300'
+              : (internals.liveIVSamples ?? 0) > 0 ? 'bg-yellow-900/40 text-yellow-300'
+              : 'bg-gray-700/60 text-gray-400'
+            }`}
+            title={[
+              `IV history: ${internals.liveIVSamples ?? 0} samples`,
+              internals.redisAttached
+                ? `persisted to Redis (${internals.redisKey || 'default key'})`
+                : 'in-memory only — buffer resets on restart',
+              internals.ivHistoryOldest && internals.ivHistoryNewest
+                ? `span ${Math.round((internals.ivHistoryNewest - internals.ivHistoryOldest) / (60 * 60 * 1000))}h`
+                : null,
+            ].filter(Boolean).join('\n')}
+          >
+            IV {internals.liveIVSamples ?? 0}
+          </span>
+          {/* Risk management compact indicator → full detail via native tooltip */}
+          <span
+            className="px-1 rounded text-[11px] font-mono cursor-help bg-gray-700/60 text-gray-300"
+            title={[
+              `STOPS / TARGETS`,
+              internals.globalStopPts != null && internals.globalTargetPts != null
+                ? `  SL ${internals.globalStopPts}pt / TP ${internals.globalTargetPts}pt (global override)`
+                : `  per-rule (no global override)`,
+              `BREAKEVEN`,
+              internals.breakevenStop
+                ? `  arms @ +${internals.breakevenTrigger}pt MFE → stop = entry +${internals.breakevenOffset}pt`
+                : `  off`,
+              `TRAILING`,
+              internals.trailingTrigger != null && internals.trailingOffset != null
+                ? `  arms @ +${internals.trailingTrigger}pt → trail ${internals.trailingOffset}pt`
+                : `  off`,
+              `BLOCKED HOURS (ET)`,
+              Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
+                ? `  ${internals.blockedHoursEt.map(h => String(h).padStart(2, '0')).join(', ')}`
+                : `  none`,
+            ].join('\n')}
+          >
+            ⚙ risk
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <span
             className={`text-[13px] font-mono ${evalCountdown <= 10 ? 'text-yellow-400 animate-pulse' : 'text-cyan-400'}`}
@@ -284,46 +343,20 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
       <PositionBanner productPosition={status?.product_position} />
 
       <div className="flex flex-col flex-1 justify-between min-h-0 overflow-y-auto">
-        {/* Window + EOD status */}
-        <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-          <div className="flex justify-between text-[15px]">
-            <span className="text-gray-300">Entry window</span>
-            <span className={`font-mono ${inEntryWindow ? 'text-green-400' : 'text-gray-500'}`}>
-              {String(startH).padStart(2,'0')}:00–{String(endH).padStart(2,'0')}:00 ET ({inEntryWindow ? 'OPEN' : 'CLOSED'})
-            </span>
-          </div>
-          <div className="flex justify-between text-[15px]">
-            <span className="text-gray-300">ET now</span>
-            <span className="text-white font-mono">{etNow.weekday} {String(etNow.hour).padStart(2,'0')}:{String(etNow.minute).padStart(2,'0')}</span>
-          </div>
-          <div className="flex justify-between text-[15px]">
-            <span className="text-gray-300">EOD force-flat</span>
-            <span className={`font-mono ${pastEodCutoff ? 'text-orange-400' : eodCutoff ? 'text-gray-400' : 'text-gray-500'}`}>
-              {eodCutoff ? `${eodCutoff.label} ET` : 'disabled'}
-              {pastEodCutoff ? ' (triggered)' : ''}
-            </span>
-          </div>
-          <div className="flex justify-between text-[15px]">
-            <span className="text-gray-300">IV history</span>
-            <span className="font-mono">
-              <span className={`${(internals.liveIVSamples ?? 0) >= 200 ? 'text-green-400' : (internals.liveIVSamples ?? 0) > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
-                {internals.liveIVSamples ?? 0} samples
-              </span>
-              <span
-                className={`ml-2 px-1 rounded text-[12px] ${internals.redisAttached ? 'bg-green-900/40 text-green-300' : 'bg-yellow-900/40 text-yellow-300'}`}
-                title={internals.redisAttached
-                  ? `Persisted to Redis key: ${internals.redisKey || '(default)'}`
-                  : 'Redis NOT attached — buffer will reset on restart'}
-              >
-                {internals.redisAttached ? 'redis' : 'in-mem'}
-              </span>
-              {internals.ivHistoryOldest && internals.ivHistoryNewest && (
-                <span className="text-gray-500 text-[12px] ml-2">
-                  span {Math.round((internals.ivHistoryNewest - internals.ivHistoryOldest) / (60 * 60 * 1000))}h
-                </span>
-              )}
-            </span>
-          </div>
+        {/* Window + ET + EOD — single status line */}
+        <div className="bg-gray-700 rounded px-1.5 py-1 mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-mono">
+          <span className={`${inEntryWindow ? 'text-green-400' : 'text-gray-500'}`}>
+            {String(startH).padStart(2,'0')}:00–{String(endH).padStart(2,'0')}:00 ET
+          </span>
+          <span className="text-gray-600">•</span>
+          <span className="text-white">{etNow.weekday} {String(etNow.hour).padStart(2,'0')}:{String(etNow.minute).padStart(2,'0')}</span>
+          <span className="text-gray-600">•</span>
+          <span className={`${pastEodCutoff ? 'text-orange-400' : eodCutoff ? 'text-gray-400' : 'text-gray-500'}`}>
+            EOD {eodCutoff ? eodCutoff.label : '--'}{pastEodCutoff ? ' ⓧ' : ''}
+          </span>
+          <span className={`ml-auto px-1 rounded text-[11px] ${inEntryWindow ? 'bg-green-900/40 text-green-300' : 'bg-gray-800 text-gray-500'}`}>
+            {inEntryWindow ? 'OPEN' : 'CLOSED'}
+          </span>
         </div>
 
         {/* Feature snapshot */}
@@ -385,79 +418,86 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
           </div>
         )}
 
-        {/* Risk management (tight-stop refit 2026-05-12) */}
-        <div className="bg-gray-700 rounded p-1.5 mb-1.5">
-          <div className="text-gray-400 text-[13px] mb-1">Risk management</div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[13px] font-mono">
-            <div className="text-gray-400">Stop / Target</div>
-            <div className="text-gray-200">
-              {internals.globalStopPts != null && internals.globalTargetPts != null
-                ? <>SL <span className="text-red-300">{internals.globalStopPts}pt</span> / TP <span className="text-green-300">{internals.globalTargetPts}pt</span></>
-                : <span className="text-gray-500">per-rule (no global override)</span>}
-            </div>
-            <div className="text-gray-400">Breakeven</div>
-            <div className="text-gray-200">
-              {internals.breakevenStop
-                ? <>arms @ +<span className="text-blue-300">{internals.breakevenTrigger}pt</span> MFE → stop = entry+<span className="text-blue-300">{internals.breakevenOffset}pt</span></>
-                : <span className="text-gray-500">off</span>}
-            </div>
-            <div className="text-gray-400">Trailing</div>
-            <div className="text-gray-200">
-              {internals.trailingTrigger != null && internals.trailingOffset != null
-                ? <>arms @ +{internals.trailingTrigger}pt → trail {internals.trailingOffset}pt</>
-                : <span className="text-gray-500">off</span>}
-            </div>
-            <div className="text-gray-400">Blocked hours (ET)</div>
-            <div className="text-gray-200">
-              {Array.isArray(internals.blockedHoursEt) && internals.blockedHoursEt.length > 0
-                ? internals.blockedHoursEt.map(h => String(h).padStart(2, '0')).join(', ')
-                : <span className="text-gray-500">none</span>}
-            </div>
-          </div>
-        </div>
-
-        {/* Per-rule condition breakdown */}
+        {/* Per-rule condition breakdown — featured rules (firing + closest)
+            keep full chip detail; the rest collapse to one-line summaries. */}
         <div className="bg-gray-700 rounded p-1.5 mb-1.5">
           <div className="text-gray-400 text-[13px] mb-1">Rule conditions</div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {RULES.map(r => {
               const { items, metCount, total, fires } = ruleStatus(r);
-              const rowBg = fires
-                ? (r.side === 'LONG' ? 'bg-green-900/40 border border-green-600/50' : 'bg-red-900/40 border border-red-600/50')
-                : 'bg-gray-800/40 border border-gray-700';
+              const isClosest = closestRule && closestRule.rule.id === r.id;
+              const isFeatured = fires || isClosest;
               const sideColor = r.side === 'LONG' ? 'text-green-400' : 'text-red-400';
               const apiRule = (internals.activeRules || []).find(a => a.id === r.id);
               const effStop = apiRule?.stopPts ?? internals.globalStopPts ?? null;
               const effTgt  = apiRule?.targetPts ?? internals.globalTargetPts ?? null;
               const isDisabled = (internals.disabledRules || []).includes(r.id);
-              return (
-                <div key={r.id} className={`rounded px-1.5 py-1 ${rowBg} ${isDisabled ? 'opacity-50' : ''}`}>
-                  <div className="flex items-center gap-2 text-[14px] mb-0.5">
-                    <span className={`font-mono font-bold w-7 ${fires ? 'text-white' : 'text-gray-200'}`}>{r.id}</span>
-                    <span className={`font-mono text-[12px] w-12 ${sideColor}`}>{r.side}</span>
-                    <span className={`font-mono text-[12px] flex-shrink-0 ${fires ? 'text-white font-bold' : 'text-gray-400'}`}>
-                      {metCount}/{total}
-                    </span>
-                    <span className="flex-1" />
-                    {isDisabled
-                      ? <span className="text-gray-500 font-mono text-[12px] italic">disabled</span>
-                      : <span className="text-gray-400 font-mono text-[12px]">SL {effStop ?? '?'} / TP {effTgt ?? '?'}</span>}
-                    {fires && !isDisabled && <span className={`font-bold animate-pulse ${sideColor}`}>READY</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {items.map((c, i) => (
-                      <span
-                        key={i}
-                        className={`px-1.5 py-0.5 rounded text-[12px] font-mono ${
-                          c.met
-                            ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                            : 'bg-gray-800 text-gray-400 border border-gray-700'
-                        }`}
-                      >
-                        {c.met ? '✓' : '○'} {c.label}
+              const rowBg = fires
+                ? (r.side === 'LONG' ? 'bg-green-900/40 border border-green-600/50' : 'bg-red-900/40 border border-red-600/50')
+                : isClosest
+                  ? 'bg-blue-900/20 border border-blue-700/40'
+                  : 'bg-gray-800/40 border border-gray-700';
+
+              if (isFeatured) {
+                // Full chip detail for firing + closest-to-firing rules.
+                return (
+                  <div key={r.id} className={`rounded px-1.5 py-1 ${rowBg} ${isDisabled ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center gap-2 text-[14px] mb-0.5">
+                      <span className={`font-mono font-bold w-7 ${fires ? 'text-white' : 'text-gray-200'}`}>{r.id}</span>
+                      <span className={`font-mono text-[12px] w-12 ${sideColor}`}>{r.side}</span>
+                      <span className={`font-mono text-[12px] flex-shrink-0 ${fires ? 'text-white font-bold' : 'text-gray-400'}`}>
+                        {metCount}/{total}
                       </span>
-                    ))}
+                      <span className="flex-1" />
+                      {isDisabled
+                        ? <span className="text-gray-500 font-mono text-[12px] italic">disabled</span>
+                        : <span className="text-gray-400 font-mono text-[12px]">SL {effStop ?? '?'} / TP {effTgt ?? '?'}</span>}
+                      {fires && !isDisabled
+                        ? <span className={`font-bold animate-pulse ${sideColor}`}>READY</span>
+                        : isClosest && <span className="text-blue-300 font-mono text-[11px]">closest</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {items.map((c, i) => (
+                        <span
+                          key={i}
+                          className={`px-1.5 py-0.5 rounded text-[12px] font-mono ${
+                            c.met
+                              ? 'bg-green-900/50 text-green-300 border border-green-700/50'
+                              : 'bg-gray-800 text-gray-400 border border-gray-700'
+                          }`}
+                        >
+                          {c.met ? '✓' : '○'} {c.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+                );
+              }
+
+              // Compact one-liner for the other rules.
+              const condTooltip = items.map(c => `${c.met ? '✓' : '○'} ${c.label}`).join('\n');
+              return (
+                <div
+                  key={r.id}
+                  className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[12px] font-mono ${rowBg} ${isDisabled ? 'opacity-50' : ''}`}
+                  title={condTooltip}
+                >
+                  <span className="font-bold w-7 text-gray-200">{r.id}</span>
+                  <span className={`w-11 ${sideColor}`}>{r.side}</span>
+                  <span className="w-7 text-gray-400">{metCount}/{total}</span>
+                  <span className="flex-1 flex items-center gap-0.5 truncate">
+                    {r.conditionIds.map((cid, i) => {
+                      const c = items[i];
+                      return (
+                        <span key={i} className={c.met ? 'text-green-400' : 'text-gray-500'}>
+                          {c.met ? '✓' : '○'}{COND_ABBREV[cid] ?? cid.slice(0, 3)}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <span className="text-gray-500 flex-shrink-0">
+                    {isDisabled ? 'disabled' : `${effStop ?? '?'}/${effTgt ?? '?'}`}
+                  </span>
                 </div>
               );
             })}
