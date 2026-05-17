@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 
-const WELL_KNOWN_STRATEGIES = ['GEX_FLIP_IVPCT', 'GEX_LEVEL_FADE', 'IV_SKEW_GEX', 'SHORT_DTE_IV', 'AI_TRADER'];
+const WELL_KNOWN_STRATEGIES = ['GEX_FLIP_IVPCT', 'GEX_LT_3M_CROSSOVER', 'GEX_LEVEL_FADE', 'IV_SKEW_GEX', 'SHORT_DTE_IV', 'AI_TRADER'];
 
 const RoutingMatrix = ({ accounts = [] }) => {
   const [routes, setRoutes] = useState(null);
