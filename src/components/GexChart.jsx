@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import { api } from '../services/api';
+import LsStatusChip from './LsStatusChip';
 
 // Suppress ResizeObserver error (benign browser warning from lightweight-charts)
 if (typeof window !== 'undefined') {
@@ -14,7 +15,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', resizeObserverHandler, true);
 }
 
-const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels, onProductChange }) => {
+const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels, lsStatus, onProductChange }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -419,6 +420,7 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
               {strategyDisplay.statusBadge.text}
             </span>
           )}
+          <LsStatusChip status={lsStatus} />
         </div>
         <div className="flex items-center gap-3 text-[9px] text-gray-400">
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>CW</span>

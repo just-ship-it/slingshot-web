@@ -295,6 +295,18 @@ export const api = {
     }
   },
 
+  // LS (Liquidity Status) — bull/bear sentiment per product. Returns
+  // { NQ: { sentiment, candleTime, priorSentiment, ... } | null, ES: {...} | null }.
+  // Bar-close gated upstream; one entry per confirmed 1m close.
+  async getLsStatus() {
+    try {
+      return await apiClient.get('/api/ls');
+    } catch (error) {
+      console.log('LS status not available:', error.message);
+      return null;
+    }
+  },
+
   // Refresh GEX levels - force recalculation
   async refreshGexLevels() {
     try {

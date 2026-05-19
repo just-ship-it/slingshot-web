@@ -38,6 +38,11 @@ const Dashboard = ({
   const [nqLtLevels, setNqLtLevels] = useState(null);
   const [esLtLevels, setEsLtLevels] = useState(null);
 
+  // LS (Liquidity Status) — bull/bear sentiment per product. Updated on
+  // every confirmed 1m bar-close flip via the 'ls_status' socket event.
+  const [nqLsStatus, setNqLsStatus] = useState(null);
+  const [esLsStatus, setEsLsStatus] = useState(null);
+
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
 
@@ -253,6 +258,13 @@ const Dashboard = ({
       else if (product === 'ES') setEsLtLevels(data);
     };
 
+    const handleLsStatus = (data) => {
+      if (!data) return;
+      const product = (data.product || 'NQ').toUpperCase();
+      if (product === 'NQ') setNqLsStatus(data);
+      else if (product === 'ES') setEsLsStatus(data);
+    };
+
     const handleStrategyStatusChange = () => {
       fetchStrategies();
     };
@@ -260,16 +272,28 @@ const Dashboard = ({
     socket.socket.on('market_data', handleMarketData);
     socket.socket.on('gex_levels', handleGexLevelsUpdate);
     socket.socket.on('lt_levels', handleLtLevels);
+    socket.socket.on('ls_status', handleLsStatus);
     socket.socket.on('initial_state', handleInitialState);
     socket.socket.on('account_data_updated', handleAccountDataUpdated);
     socket.socket.on('position_update', handlePositionChange);
     socket.socket.on('position_closed', handlePositionChange);
     socket.socket.on('strategyStatus', handleStrategyStatusChange);
 
+    // Seed initial LS state from REST in case we missed flips before connecting.
+    api.getLsStatus()
+      .then(res => {
+        if (res?.data) {
+          if (res.data.NQ) setNqLsStatus(res.data.NQ);
+          if (res.data.ES) setEsLsStatus(res.data.ES);
+        }
+      })
+      .catch(() => { /* endpoint unavailable, ignore */ });
+
     return () => {
       socket.socket.off('market_data', handleMarketData);
       socket.socket.off('gex_levels', handleGexLevelsUpdate);
       socket.socket.off('lt_levels', handleLtLevels);
+      socket.socket.off('ls_status', handleLsStatus);
       socket.socket.off('initial_state', handleInitialState);
       socket.socket.off('account_data_updated', handleAccountDataUpdated);
       socket.socket.off('position_update', handlePositionChange);
@@ -401,6 +425,7 @@ const Dashboard = ({
             strategyStatus={chartProduct === 'nq' ? strategyStatus : null}
             product={chartProduct}
             ltLevels={chartProduct === 'nq' ? nqLtLevels : esLtLevels}
+            lsStatus={chartProduct === 'nq' ? nqLsStatus : esLsStatus}
             getCandlesFn={chartProduct === 'es' ? api.getEsCandles : undefined}
             onProductChange={setChartProduct}
           />
