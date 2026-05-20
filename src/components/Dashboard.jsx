@@ -7,6 +7,7 @@ import LTCandleRegimePanel from './LTCandleRegimePanel';
 import GexFlipIvpctPanel from './GexFlipIvpctPanel';
 import GexLt3mCrossoverPanel from './GexLt3mCrossoverPanel';
 import GexLevelFadePanel from './GexLevelFadePanel';
+import LsFlipTriggerBarPanel from './LsFlipTriggerBarPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
@@ -366,6 +367,11 @@ const Dashboard = ({
         {isStrategyEnabled('gex-level-fade') && (
           <div className="panel-gex-level-fade">
             <GexLevelFadePanel socket={socket} quotes={quotes} />
+          </div>
+        )}
+        {isStrategyEnabled('ls-flip-trigger-bar') && (
+          <div className="panel-ls-flip-trigger-bar">
+            <LsFlipTriggerBarPanel socket={socket} quotes={quotes} />
           </div>
         )}
         {isStrategyEnabled('iv-skew-gex') && (

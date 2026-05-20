@@ -515,6 +515,16 @@ export const api = {
     }
   },
 
+  // LS-Flip-Trigger-Bar strategy status from multi-strategy engine
+  async getLsFlipTriggerBarStatus() {
+    try {
+      return await apiClient.get('/api/strategy/ls-flip-trigger-bar/status');
+    } catch (error) {
+      console.log('LS-FLIP-TRIGGER-BAR status not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {
