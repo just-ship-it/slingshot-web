@@ -3,7 +3,10 @@ import { Settings } from 'lucide-react';
 
 const TICKER_GROUPS = [
   { symbols: ['NQ', 'QQQ'], separator: false },
-  { symbols: ['ES', 'SPY'], separator: true },
+  // [2026-05-20] ES/SPY ticker group disabled — no live ES strategies and
+  // data-service no longer streams ES/SPY quotes. Re-enable here + in
+  // CompactQuotes.jsx if reviving ES.
+  // { symbols: ['ES', 'SPY'], separator: true },
 ];
 
 const CompactHeader = ({

@@ -33,16 +33,19 @@ const Dashboard = ({
 
   // GEX data
   const [gexData, setGexData] = useState({ cboe: null, tradier: null });
-  const [esGexData, setEsGexData] = useState({ cboe: null, tradier: null });
+  // [2026-05-20] ES GEX state disabled — data-service no longer publishes it.
+  // const [esGexData, setEsGexData] = useState({ cboe: null, tradier: null });
 
   // LT levels
   const [nqLtLevels, setNqLtLevels] = useState(null);
-  const [esLtLevels, setEsLtLevels] = useState(null);
+  // [2026-05-20] ES LT state disabled — data-service no longer publishes it.
+  // const [esLtLevels, setEsLtLevels] = useState(null);
 
   // LS (Liquidity Status) — bull/bear sentiment per product. Updated on
   // every confirmed 1m bar-close flip via the 'ls_status' socket event.
   const [nqLsStatus, setNqLsStatus] = useState(null);
-  const [esLsStatus, setEsLsStatus] = useState(null);
+  // [2026-05-20] ES LS state disabled — data-service no longer publishes it.
+  // const [esLsStatus, setEsLsStatus] = useState(null);
 
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
@@ -50,8 +53,10 @@ const Dashboard = ({
   // Strategy list (for showing/hiding panels based on enabled state)
   const [strategies, setStrategies] = useState([]);
 
-  // Chart product toggle (NQ/ES)
-  const [chartProduct, setChartProduct] = useState('nq');
+  // [2026-05-20] Chart product toggle removed — only NQ is rendered now.
+  // Keep the variable as a const so dependent code paths still resolve.
+  const chartProduct = 'nq';
+  // const [chartProduct, setChartProduct] = useState('nq');
 
   // Polling state
   const [pollingInterval, setPollingInterval] = useState(null);
@@ -136,17 +141,20 @@ const Dashboard = ({
     }
   };
 
-  const fetchEsGexData = async () => {
-    try {
-      const [cboe, tradier] = await Promise.all([
-        api.getEsGexLevels().catch(() => null),
-        api.getEsTradierGexLevels().catch(() => null)
-      ]);
-      setEsGexData({ cboe, tradier });
-    } catch (err) {
-      console.error('Error fetching ES GEX data:', err);
-    }
-  };
+  // [2026-05-20] fetchEsGexData disabled — data-service no longer initializes
+  // the ES GEX calculator. The `api.getEsGexLevels()` endpoint will return
+  // errors or 503 if called.
+  // const fetchEsGexData = async () => {
+  //   try {
+  //     const [cboe, tradier] = await Promise.all([
+  //       api.getEsGexLevels().catch(() => null),
+  //       api.getEsTradierGexLevels().catch(() => null)
+  //     ]);
+  //     setEsGexData({ cboe, tradier });
+  //   } catch (err) {
+  //     console.error('Error fetching ES GEX data:', err);
+  //   }
+  // };
 
   const fetchStrategyStatus = async () => {
     try {
@@ -177,8 +185,8 @@ const Dashboard = ({
     onTradovateCheck?.().catch(console.error);
 
     fetchGexData();
-    fetchEsGexData();
-    const gexInterval = setInterval(() => { fetchGexData(); fetchEsGexData(); }, 3 * 60 * 1000);
+    // [2026-05-20] fetchEsGexData() disabled — see commented-out function above.
+    const gexInterval = setInterval(() => { fetchGexData(); }, 3 * 60 * 1000);
 
     fetchStrategyStatus();
     fetchStrategies();
@@ -256,14 +264,18 @@ const Dashboard = ({
       if (!data) return;
       const product = (data.product || 'NQ').toUpperCase();
       if (product === 'NQ') setNqLtLevels(data);
-      else if (product === 'ES') setEsLtLevels(data);
+      // [2026-05-20] ES LT routing disabled — data-service no longer publishes
+      // ES LT levels. Ignore any stale events that arrive from older deploys.
+      // else if (product === 'ES') setEsLtLevels(data);
     };
 
     const handleLsStatus = (data) => {
       if (!data) return;
       const product = (data.product || 'NQ').toUpperCase();
       if (product === 'NQ') setNqLsStatus(data);
-      else if (product === 'ES') setEsLsStatus(data);
+      // [2026-05-20] ES LS routing disabled — data-service no longer publishes
+      // ES LS state.
+      // else if (product === 'ES') setEsLsStatus(data);
     };
 
     const handleStrategyStatusChange = () => {
@@ -285,7 +297,8 @@ const Dashboard = ({
       .then(res => {
         if (res?.data) {
           if (res.data.NQ) setNqLsStatus(res.data.NQ);
-          if (res.data.ES) setEsLsStatus(res.data.ES);
+          // [2026-05-20] ES LS seed disabled.
+          // if (res.data.ES) setEsLsStatus(res.data.ES);
         }
       })
       .catch(() => { /* endpoint unavailable, ignore */ });
@@ -399,11 +412,13 @@ const Dashboard = ({
       {/* Column 2 (1/5): GEX levels, accounts, alerts */}
       <div className="dashboard-mid">
         <div className="panel-gex">
+          {/* [2026-05-20] ES props passed as null/no-op — TabbedGexPanel now
+              renders NQ only (ES tab commented out). */}
           <TabbedGexPanel
             nqGexData={gexData}
-            esGexData={esGexData}
+            esGexData={null}
             onRefreshNq={fetchGexData}
-            onRefreshEs={fetchEsGexData}
+            onRefreshEs={() => {}}
           />
         </div>
         {multiAccountData && (
@@ -422,18 +437,21 @@ const Dashboard = ({
         </div>
       </div>
 
-      {/* Column 3 (3/5): chart with NQ/ES toggle in header */}
+      {/* Column 3 (3/5): NQ chart only.
+          [2026-05-20] ES toggle removed — chartProduct is hard-coded to 'nq'.
+          ES branches of the prop ternaries are dropped (esGexData/esLtLevels/
+          esLsStatus state no longer exists). To restore the toggle, uncomment
+          the chartProduct useState above and re-thread the ES props. */}
       <div className="dashboard-right">
         <div className="panel-chart">
           <GexChart
-            quote={chartProduct === 'nq' ? (quotes.NQ || quotes.MNQ) : (quotes.ES || quotes.MES)}
-            gexData={chartProduct === 'nq' ? gexData : esGexData}
-            strategyStatus={chartProduct === 'nq' ? strategyStatus : null}
-            product={chartProduct}
-            ltLevels={chartProduct === 'nq' ? nqLtLevels : esLtLevels}
-            lsStatus={chartProduct === 'nq' ? nqLsStatus : esLsStatus}
-            getCandlesFn={chartProduct === 'es' ? api.getEsCandles : undefined}
-            onProductChange={setChartProduct}
+            quote={quotes.NQ || quotes.MNQ}
+            gexData={gexData}
+            strategyStatus={strategyStatus}
+            product="nq"
+            ltLevels={nqLtLevels}
+            lsStatus={nqLsStatus}
+            onProductChange={() => {}}
           />
         </div>
       </div>

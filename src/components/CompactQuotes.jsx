@@ -2,7 +2,10 @@ import React from 'react';
 
 const SYMBOL_GROUPS = [
   { symbols: ['NQ', 'QQQ'], label: 'NQ' },
-  { symbols: ['ES', 'SPY'], label: 'ES' },
+  // [2026-05-20] ES/SPY group disabled — no live ES strategies + data-service
+  // no longer streams ES/SPY quotes. Re-enable here + CompactHeader.jsx if
+  // reviving ES.
+  // { symbols: ['ES', 'SPY'], label: 'ES' },
 ];
 
 const CompactQuotes = ({ quotes = {} }) => {
