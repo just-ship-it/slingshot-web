@@ -76,6 +76,8 @@ const LsFlipTriggerBarPanel = ({ socket, quotes }) => {
   const lastSignal = internals.lastSignal;
   const rejectReason = internals.lastRejectReason;
   const atrWarm = internals.atrWarm;
+  const atrBars = internals.atrBarsBuffered ?? 0;
+  const atrPeriod = params.atrPeriod ?? 20;
 
   const fmtTime = (ms) => {
     if (!ms) return '—';
@@ -93,14 +95,16 @@ const LsFlipTriggerBarPanel = ({ socket, quotes }) => {
     return `${h}h ${m}m ago`;
   };
 
-  // Header badge: position > pending signal > LS state > waiting
+  // Header badge: position > disabled > LS state > waiting.
+  // ATR warmup is a TRADING gate (cb_atr filter), not a detection gate —
+  // LS sentiment is observable the moment the first flip lands. We surface
+  // ATR-warming as a secondary sub-indicator below the badge instead of
+  // overriding the actual LS state.
   let badge;
   if (position?.side) {
     badge = { color: position.side === 'buy' ? 'bg-green-600' : 'bg-red-600', text: position.side === 'buy' ? 'LONG' : 'SHORT' };
   } else if (!enabled) {
     badge = { color: 'bg-gray-700', text: 'DISABLED' };
-  } else if (!atrWarm) {
-    badge = { color: 'bg-yellow-600', text: 'WARMING' };
   } else if (lastFlip?.sentiment === 'BULLISH') {
     badge = { color: 'bg-green-800', text: 'BULLISH' };
   } else if (lastFlip?.sentiment === 'BEARISH') {
@@ -174,7 +178,7 @@ const LsFlipTriggerBarPanel = ({ socket, quotes }) => {
       {/* Params summary */}
       <div className="mt-auto pt-1 border-t border-gray-700">
         <div className="text-[10px] text-gray-500 leading-tight">
-          fib {params.fib} · cb_atr&lt;{params.cbAtrMax} · maxHold {params.maxHoldBars}m · fill timeout {params.fillTimeoutCandles}m
+          fib {params.fib} · cb_atr&lt;{params.cbAtrMax}{!atrWarm && <span className="text-yellow-500"> (warming {atrBars}/{atrPeriod})</span>} · maxHold {params.maxHoldBars}m · fill timeout {params.fillTimeoutCandles}m
         </div>
         <div className="text-[10px] text-gray-500 leading-tight">
           block hours ET [{(params.blockedHoursEt || []).join(', ')}] · EOD {params.eodCutoffEt || '—'}
