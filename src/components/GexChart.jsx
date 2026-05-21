@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries } from 'lightweight-charts';
 import { api } from '../services/api';
 import LsStatusChip from './LsStatusChip';
 
@@ -19,14 +19,18 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
-  const zgSeriesRef = useRef(null);
   const priceLinesRef = useRef([]);
   const positionLinesRef = useRef([]);
   const ltLinesRef = useRef([]);
   const candleHistoryRef = useRef([]);
-  const zgHistoryRef = useRef([]);
   const currentPriceRef = useRef(null);
   const productRef = useRef(product);
+  // [2026-05-21] Zero-Gamma (ZG) is now rendered as a single horizontal
+  // priceLine alongside CW/PW/R/S (see GEX-level useEffect), not as a
+  // LineSeries history. The prior history-line implementation drew a
+  // stepped path through every ZG update over a 1h window; replacing it
+  // with a priceLine matches the visual style of every other GEX level
+  // and removes the time-series accumulation cost.
 
   const [chartReady, setChartReady] = useState(false);
 
@@ -100,7 +104,6 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   // Clear chart data when product switches to prevent stale lines
   useEffect(() => {
     if (seriesRef.current) seriesRef.current.setData([]);
-    if (zgSeriesRef.current) zgSeriesRef.current.setData([]);
     priceLinesRef.current.forEach(line => { try { seriesRef.current?.removePriceLine(line); } catch {} });
     priceLinesRef.current = [];
     ltLinesRef.current.forEach(line => { try { seriesRef.current?.removePriceLine(line); } catch {} });
@@ -172,15 +175,8 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
       },
     });
 
-    const zgSeries = chart.addSeries(LineSeries, {
-      color: '#eab308', lineWidth: 2, lineType: 1,
-      priceLineVisible: false, lastValueVisible: true, title: 'ZG',
-      autoscaleInfoProvider: () => null,
-    });
-
     chartRef.current = chart;
     seriesRef.current = series;
-    zgSeriesRef.current = zgSeries;
     setChartReady(true);
 
     // ResizeObserver for dynamic sizing
@@ -201,7 +197,6 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
-      zgSeriesRef.current = null;
       setChartReady(false);
     };
   }, []);
@@ -281,22 +276,9 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
         seriesRef.current.setData(history);
       }
     }
-    // Extend ZG line
-    const now = Math.floor(Date.now() / 1000);
-    if (zgSeriesRef.current && zgHistoryRef.current.length > 0) {
-      const zgHistory = zgHistoryRef.current;
-      const firstZg = zgHistory[0];
-      const lastZg = zgHistory[zgHistory.length - 1];
-      if (now > lastZg.time) {
-        const chartData = zgHistory.map(p => ({ time: p.time, value: p.value }));
-        const oneHourAgo = now - 3600;
-        if (firstZg.time > oneHourAgo) chartData.unshift({ time: oneHourAgo, value: firstZg.value });
-        chartData.push({ time: now, value: lastZg.value });
-        chartData.sort((a, b) => a.time - b.time);
-        const uniqueChartData = chartData.filter((p, i, arr) => i === arr.length - 1 || p.time !== arr[i + 1].time);
-        zgSeriesRef.current.setData(uniqueChartData);
-      }
-    }
+    // [2026-05-21] ZG time-series extension removed — ZG is now a horizontal
+    // priceLine drawn in the GEX-level useEffect below, refreshed on every
+    // gexLevels update like every other level.
   }, [quote, chartReady]);
 
   // GEX level lines
@@ -313,31 +295,12 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     };
     createLine(gexLevels.callWall, 'CW', '#ef4444', 0);
     createLine(gexLevels.putWall, 'PW', '#22c55e', 0);
+    // Zero Gamma — single horizontal line that snaps to the current value
+    // on every gexLevels update (same behavior as CW/PW/R/S). Color stays
+    // the previous ZG yellow (#eab308) to match the legend chip.
+    createLine(gexLevels.zeroGamma, 'ZG', '#eab308', 0);
     gexLevels.resistance?.forEach((level, i) => createLine(level, `R${i + 1}`, '#f97316', 2));
     gexLevels.support?.forEach((level, i) => createLine(level, `S${i + 1}`, '#06b6d4', 2));
-
-    // Update Zero Gamma time series
-    if (zgSeriesRef.current && gexLevels.zeroGamma) {
-      const now = Math.floor(Date.now() / 1000);
-      const history = zgHistoryRef.current;
-      const filtered = history.filter(p => now - p.time < 3600);
-      const lastPoint = filtered[filtered.length - 1];
-      if (!lastPoint) filtered.push({ time: now, value: gexLevels.zeroGamma });
-      else if (lastPoint.time === now) lastPoint.value = gexLevels.zeroGamma;
-      else if (lastPoint.value !== gexLevels.zeroGamma) filtered.push({ time: now, value: gexLevels.zeroGamma });
-      zgHistoryRef.current = filtered;
-      const chartData = filtered.map(p => ({ time: p.time, value: p.value }));
-      if (chartData.length > 0) {
-        const first = chartData[0];
-        const last = chartData[chartData.length - 1];
-        const oneHourAgo = now - 3600;
-        if (first.time > oneHourAgo) chartData.unshift({ time: oneHourAgo, value: first.value });
-        if (now > last.time) chartData.push({ time: now, value: last.value });
-      }
-      chartData.sort((a, b) => a.time - b.time);
-      const uniqueChartData = chartData.filter((p, i, arr) => i === arr.length - 1 || p.time !== arr[i + 1].time);
-      zgSeriesRef.current.setData(uniqueChartData);
-    }
   }, [gexLevels, chartReady]);
 
   // Position lines
