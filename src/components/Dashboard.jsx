@@ -47,6 +47,10 @@ const Dashboard = ({
   // [2026-05-20] ES LS state disabled — data-service no longer publishes it.
   // const [esLsStatus, setEsLsStatus] = useState(null);
 
+  // TradingView auth health — drives the JWT-needs-refresh banner.
+  // Updated by initial_state seed + the 'tv_auth_state' WebSocket event.
+  const [tvAuthState, setTvAuthState] = useState({ status: 'healthy' });
+
   // Strategy status
   const [strategyStatus, setStrategyStatus] = useState(null);
 
@@ -278,6 +282,14 @@ const Dashboard = ({
       // else if (product === 'ES') setEsLsStatus(data);
     };
 
+    // TV auth state — sent on initial socket connect (seed) and on every
+    // tv_auth_* event thereafter (status flips between 'healthy' /
+    // 'degraded'). Drives the top-of-dashboard banner that tells Drew to
+    // refresh the JWT.
+    const handleTvAuthState = (data) => {
+      if (data && typeof data === 'object') setTvAuthState(data);
+    };
+
     const handleStrategyStatusChange = () => {
       fetchStrategies();
     };
@@ -291,6 +303,17 @@ const Dashboard = ({
     socket.socket.on('position_update', handlePositionChange);
     socket.socket.on('position_closed', handlePositionChange);
     socket.socket.on('strategyStatus', handleStrategyStatusChange);
+    socket.socket.on('tv_auth_state', handleTvAuthState);
+
+    // Seed TV auth state from REST in case we missed the initial socket
+    // emit (fast page-load / reconnect races). Endpoint returns the same
+    // tvAuthState object the WebSocket event carries.
+    fetch(`${api.baseUrl || ''}/api/tv-auth/status`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('dashboardToken') || ''}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setTvAuthState(d); })
+      .catch(() => { /* harmless */ });
 
     // Seed initial LS state from REST in case we missed flips before connecting.
     api.getLsStatus()
@@ -313,6 +336,7 @@ const Dashboard = ({
       socket.socket.off('position_update', handlePositionChange);
       socket.socket.off('position_closed', handlePositionChange);
       socket.socket.off('strategyStatus', handleStrategyStatusChange);
+      socket.socket.off('tv_auth_state', handleTvAuthState);
     };
   }, [socket, account]);
 
@@ -363,8 +387,43 @@ const Dashboard = ({
     return strategies.some(s => s.name === name && s.enabled);
   };
 
+  // ---- TV auth banner ----
+  // Shown when the data-service / signal-generator reports a degraded
+  // TradingView session — usually means the JWT needs to be refreshed
+  // (manual Chrome DevTools pull). Banner auto-clears when LT studies
+  // start emitting again (tv_auth_restored).
+  const renderTvAuthBanner = () => {
+    if (!tvAuthState || tvAuthState.status !== 'degraded') return null;
+    const sinceLabel = tvAuthState.since
+      ? new Date(tvAuthState.since).toLocaleTimeString('en-US', {
+          timeZone: 'America/New_York', hour12: false,
+          hour: '2-digit', minute: '2-digit',
+        }) + ' ET'
+      : 'unknown';
+    return (
+      <div className="bg-red-900 border-b-2 border-red-500 text-red-100 px-4 py-2 text-sm flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="text-base">🔴</span>
+          <div className="min-w-0">
+            <div className="font-semibold">TradingView JWT needs refresh</div>
+            <div className="text-xs text-red-200/80 truncate">
+              {tvAuthState.message || `Auth degraded since ${sinceLabel}`}
+              {tvAuthState.source ? ` · source: ${tvAuthState.source}` : ''}
+              {tvAuthState.tokenTTLSec != null
+                ? ` · token TTL: ${Math.floor(tvAuthState.tokenTTLSec / 60)}m`
+                : ''}
+            </div>
+          </div>
+        </div>
+        <div className="text-xs text-red-200 whitespace-nowrap">since {sinceLabel}</div>
+      </div>
+    );
+  };
+
   return (
-    <div className="dashboard-split">
+    <>
+      {renderTvAuthBanner()}
+      <div className="dashboard-split">
       {/* Column 1 (1/5): strategy panels */}
       <div className="dashboard-left">
         {isStrategyEnabled('gex-flip-ivpct') && (
@@ -455,7 +514,8 @@ const Dashboard = ({
           />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
