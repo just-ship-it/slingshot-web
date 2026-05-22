@@ -140,7 +140,11 @@ const GexLevelFadePanel = ({ socket, quotes }) => {
 
   const getBadge = () => {
     if (position?.side) return { color: position.side === 'long' ? 'bg-green-600' : 'bg-red-600', text: position.side.toUpperCase() };
-    if (pastEodCutoff) return { color: 'bg-orange-700', text: 'EOD-FLAT' };
+    // EOD-FLAT only fires during the wind-down (cutoff → CME daily close 17:00 ET).
+    // After 17:00 ET the market is closed and the next session is overnight, so
+    // OUT-OF-WINDOW is the correct label for strategies that don't trade outside RTH.
+    if (pastEodCutoff && etNow.hour < 17) return { color: 'bg-orange-700', text: 'EOD-FLAT' };
+    if (blockedHours.has(etNow.hour) && nowMins >= winStart && nowMins < winEnd) return { color: 'bg-gray-600', text: 'BLOCKED-HOUR' };
     if (!inEntryWindow) return { color: 'bg-gray-600', text: 'OUT-OF-WINDOW' };
     if (!regimeAllowed) return { color: 'bg-gray-600', text: 'REGIME-BLOCKED' };
     if (inCooldown) return { color: 'bg-yellow-700', text: 'COOLDOWN' };

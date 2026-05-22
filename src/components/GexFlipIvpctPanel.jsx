@@ -262,7 +262,12 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
 
   // Blockers — things preventing any signal regardless of rule status
   const blockers = [];
-  if (!inEntryWindow) blockers.push(`Outside entry window (${String(startH).padStart(2,'0')}:00–${String(endH).padStart(2,'0')}:00 ET)`);
+  const inWindowHours = etNow.weekday !== 'Sat' && etNow.weekday !== 'Sun' && etNow.hour >= startH && etNow.hour < endH;
+  const blockedThisHour = inWindowHours && blockedHours.includes(etNow.hour);
+  if (!inEntryWindow) {
+    if (blockedThisHour) blockers.push(`Blocked hour ${etNow.hour}:00 ET`);
+    else blockers.push(`Outside entry window (${String(startH).padStart(2,'0')}:00–${String(endH).padStart(2,'0')}:00 ET)`);
+  }
   if (pastEodCutoff) blockers.push(`Past EOD force-flat (${eodCutoff.label} ET)`);
   if (inCooldown) blockers.push(`Cooldown ${Math.floor(cooldownData.seconds_remaining/60)}:${String(cooldownData.seconds_remaining%60).padStart(2,'0')}`);
   if (!ivData) blockers.push('No IV data');
@@ -271,7 +276,11 @@ const GexFlipIvpctPanel = ({ socket, quotes }) => {
 
   const getBadge = () => {
     if (position?.side) return { color: position.side === 'long' ? 'bg-green-600' : 'bg-red-600', text: position.side.toUpperCase() };
-    if (pastEodCutoff) return { color: 'bg-orange-700', text: 'EOD-FLAT' };
+    // EOD-FLAT only fires during the wind-down (cutoff → CME daily close 17:00 ET).
+    // After 17:00 ET the market is closed and the next session is overnight, so
+    // OUT-OF-WINDOW is the correct label for strategies that don't trade outside RTH.
+    if (pastEodCutoff && etNow.hour < 17) return { color: 'bg-orange-700', text: 'EOD-FLAT' };
+    if (blockedThisHour) return { color: 'bg-gray-600', text: 'BLOCKED-HOUR' };
     if (!inEntryWindow) return { color: 'bg-gray-600', text: 'OUT-OF-WINDOW' };
     if (inCooldown) return { color: 'bg-yellow-700', text: 'COOLDOWN' };
     if (firingRule) return { color: firingRule.side === 'LONG' ? 'bg-green-700' : 'bg-red-700', text: `${firingRule.id} ARMED` };
