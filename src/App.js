@@ -1,3 +1,7 @@
+// [build: 2026-05-22T17:55] Cache-buster — force a fresh artifact upload to
+// Cloudflare Pages. Their dedupe-on-hash skipped the prior empty-commit
+// redeploy ("Uploaded 0 files (7 already uploaded)") and we suspect one of
+// the cached artifacts is bad. Touching App.js changes the bundle hash.
 import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
 import PlatformStatus from './components/PlatformStatus';
