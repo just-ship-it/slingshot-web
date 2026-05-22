@@ -271,6 +271,7 @@ function App() {
           onAccountSummaryChange={setAccountSummary}
           tradingPanelOpen={tradingPanelOpen}
           onToggleTradingPanel={() => setTradingPanelOpen(prev => !prev)}
+          onShowStatus={() => setShowStatusModal(true)}
           multiAccountData={multiAccountData}
           onAccountsLoaded={(loadedAccounts) => {
             setAccounts(loadedAccounts);

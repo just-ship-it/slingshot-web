@@ -25,6 +25,7 @@ const Dashboard = ({
   onAccountSummaryChange,
   tradingPanelOpen,
   onToggleTradingPanel,
+  onShowStatus,
   multiAccountData,
 }) => {
   const [accountSummary, setAccountSummary] = useState(null);
@@ -415,7 +416,18 @@ const Dashboard = ({
             </div>
           </div>
         </div>
-        <div className="text-xs text-red-200 whitespace-nowrap">since {sinceLabel}</div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {onShowStatus && (
+            <button
+              onClick={onShowStatus}
+              className="text-xs px-3 py-1 bg-red-700 hover:bg-red-600 border border-red-400 text-white rounded transition-colors font-semibold whitespace-nowrap"
+              title="Open Platform Status to set a new JWT or bootstrap the auto-refresh session"
+            >
+              Fix it →
+            </button>
+          )}
+          <div className="text-xs text-red-200 whitespace-nowrap">since {sinceLabel}</div>
+        </div>
       </div>
     );
   };

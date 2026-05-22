@@ -48,6 +48,12 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [tokenSubmitting, setTokenSubmitting] = useState(false);
   const [tokenMessage, setTokenMessage] = useState(null);
 
+  // TradingView sessionid bootstrap (Option A — auto-refresh)
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [sessionInput, setSessionInput] = useState('');
+  const [sessionSubmitting, setSessionSubmitting] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState(null);
+
   // Schwab token
   const [showSchwabTokenForm, setShowSchwabTokenForm] = useState(false);
   const [schwabTokenInput, setSchwabTokenInput] = useState('');
@@ -224,6 +230,28 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       setTokenMessage({ type: 'error', text: msg });
     } finally {
       setTokenSubmitting(false);
+    }
+  };
+
+  const handleSessionSubmit = async (e) => {
+    e.preventDefault();
+    if (!sessionInput.trim()) return;
+    setSessionSubmitting(true);
+    setSessionMessage(null);
+    try {
+      const result = await api.bootstrapTvSessionId(sessionInput.trim());
+      setSessionMessage({
+        type: 'success',
+        text: `Session bootstrapped (JWT TTL: ${formatTTL(result.tokenTTL)}). Auto-refresh active.`,
+      });
+      setSessionInput('');
+      setShowSessionForm(false);
+      setTimeout(fetchSignalGeneratorConnections, 2000);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to bootstrap session';
+      setSessionMessage({ type: 'error', text: msg });
+    } finally {
+      setSessionSubmitting(false);
     }
   };
 
@@ -795,16 +823,28 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
                       <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
                     </div>
-                    {/* Set Token */}
-                    <div className="mt-2">
-                      {!showTokenForm ? (
-                        <button
-                          onClick={() => { setShowTokenForm(true); setTokenMessage(null); }}
-                          className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                        >
-                          Set Token
-                        </button>
-                      ) : (
+                    {/* Set Token + Bootstrap Session */}
+                    <div className="mt-2 flex flex-col gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        {!showTokenForm && (
+                          <button
+                            onClick={() => { setShowTokenForm(true); setTokenMessage(null); }}
+                            className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                          >
+                            Set Token
+                          </button>
+                        )}
+                        {!showSessionForm && (
+                          <button
+                            onClick={() => { setShowSessionForm(true); setSessionMessage(null); }}
+                            className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded transition-colors"
+                            title="Bootstrap auto-refresh: paste sessionid from an incognito TV login (one-time setup)"
+                          >
+                            Bootstrap Session (auto-refresh)
+                          </button>
+                        )}
+                      </div>
+                      {showTokenForm && (
                         <form onSubmit={handleTokenSubmit} className="space-y-2">
                           <textarea
                             value={tokenInput}
@@ -833,8 +873,44 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                         </form>
                       )}
                       {tokenMessage && (
-                        <div className={`mt-1 text-xs ${tokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                        <div className={`text-xs ${tokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
                           {tokenMessage.text}
+                        </div>
+                      )}
+                      {showSessionForm && (
+                        <form onSubmit={handleSessionSubmit} className="space-y-2">
+                          <div className="text-[11px] text-gray-400 leading-snug">
+                            Open TV in an <span className="text-purple-300 font-semibold">incognito window</span> (NOT your daily browser tab — TV pins one JWT per sessionid). Log in, then DevTools → Application → Cookies → tradingview.com. Paste sessionid (and sessionid_sign if present) below.
+                          </div>
+                          <textarea
+                            value={sessionInput}
+                            onChange={(e) => setSessionInput(e.target.value)}
+                            placeholder="sessionid=...; sessionid_sign=...; device_t=..."
+                            className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-purple-500 focus:outline-none resize-none"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={sessionSubmitting || !sessionInput.trim()}
+                              className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+                            >
+                              {sessionSubmitting ? 'Bootstrapping...' : 'Bootstrap'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setShowSessionForm(false); setSessionInput(''); setSessionMessage(null); }}
+                              className="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      {sessionMessage && (
+                        <div className={`text-xs ${sessionMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                          {sessionMessage.text}
                         </div>
                       )}
                     </div>

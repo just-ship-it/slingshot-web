@@ -411,6 +411,10 @@ export const api = {
     return await apiClient.post('/api/tradingview/token', { token });
   },
 
+  async bootstrapTvSessionId(cookies) {
+    return await apiClient.post('/api/tv-auth/sessionid', { cookies });
+  },
+
   async setSchwabToken(redirectUrl) {
     return await apiClient.post('/api/schwab/token', { redirectUrl });
   },
