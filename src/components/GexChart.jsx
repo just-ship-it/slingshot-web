@@ -245,8 +245,14 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   // Update candlestick data with real-time OHLC
   useEffect(() => {
     if (!seriesRef.current || !quote?.close || !chartReady) return;
-    // Only update candle chart from TradingView chart-session (du) data, not quote-session (qsd)
-    if (!quote.candleTimestamp) return;
+    // [2026-05-22] Removed the `if (!quote.candleTimestamp) return;` gate.
+    // That filter was TradingView-era — it skipped quote-session (qsd) ticks
+    // to avoid noisy mid-bar updates and only rendered chart-session (du)
+    // OHLC. With Schwab as the upstream, L1 ticks (1Hz, candleTimestamp=null)
+    // are the live update signal and CHART_FUTURES bars (1/min,
+    // candleTimestamp set) are the bar-boundary signal. The candle-build
+    // logic below already handles both cases: when candleTimestamp is null
+    // it uses close as O/H/L and stretches high/low on the in-progress bar.
     const timestamp = quote.timestamp ? new Date(quote.timestamp).getTime() / 1000 : Math.floor(Date.now() / 1000);
     const candleTime = Math.floor(timestamp / 60) * 60;
     const hasCandelOHLCV = !!quote.candleTimestamp;
