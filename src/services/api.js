@@ -608,6 +608,14 @@ export const api = {
     return await apiClient.post('/api/pnl/sync');
   },
 
+  // Account tracker — projection bands + actual trajectory + MAE flags
+  async getAccountTracker(startDate, startBalance) {
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (startBalance != null) params.set('startBalance', String(startBalance));
+    return await apiClient.get(`/api/account-tracker?${params.toString()}`);
+  },
+
   // Macro Briefing endpoints
   async getLatestBriefing() {
     return await apiClient.get('/api/briefing/latest');
