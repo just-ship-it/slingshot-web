@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, LineSeries, AreaSeries } from 'lightweight-charts';
-import { RefreshCw, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle, Activity, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 
 const LS_KEY_START_DATE    = 'accountTracker.startDate';
 const LS_KEY_START_BALANCE = 'accountTracker.startBalance';
+const DEFAULT_START_BALANCE = 2000;  // matches precompute's default — no rebootstrap needed at this value
 
 const fmtUsd = (n) => {
   if (n == null || !Number.isFinite(n)) return '—';
@@ -88,6 +89,7 @@ export default function AccountTrackerPanel() {
     seriesRefs.current.bandP10 = chart.addSeries(AreaSeries, { lineColor: 'rgba(59,130,246,0.05)', topColor: 'rgba(59,130,246,0.18)', bottomColor: 'rgba(59,130,246,0.02)', lineWidth: 1 });
     seriesRefs.current.median  = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, lineStyle: 2 });
     seriesRefs.current.actual  = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 3 });
+    seriesRefs.current.ladderLines = [];  // populated by ladder useEffect below
 
     const resize = () => {
       if (containerRef.current && chartRef.current) {
@@ -129,6 +131,27 @@ export default function AccountTrackerPanel() {
       actual.unshift({ time: startTs, value: data.startBalance });
     }
     seriesRefs.current.actual.setData(actual);
+
+    // Draw horizontal price lines at each ladder threshold so milestones
+    // are visually obvious on the chart.
+    const ladder = data.projection?.scalingLadder || [];
+    // Remove old ladder lines
+    for (const pl of seriesRefs.current.ladderLines) {
+      try { seriesRefs.current.median.removePriceLine(pl); } catch {}
+    }
+    seriesRefs.current.ladderLines = [];
+    for (const tier of ladder) {
+      const desc = tier.n_mnq ? `${tier.n_mnq}×MNQ` : tier.n_nq ? `${tier.n_nq}×NQ` : '';
+      const line = seriesRefs.current.median.createPriceLine({
+        price: tier.min_balance,
+        color: 'rgba(251,191,36,0.5)',
+        lineWidth: 1,
+        lineStyle: 1,  // dashed
+        axisLabelVisible: true,
+        title: `→ ${desc}`,
+      });
+      seriesRefs.current.ladderLines.push(line);
+    }
 
     chartRef.current.timeScale().fitContent();
   }, [data, startDate]);
@@ -196,8 +219,59 @@ export default function AccountTrackerPanel() {
         </div>
       )}
 
+      {loading && (
+        <div className="bg-blue-900/30 border border-blue-700 text-blue-200 text-sm rounded p-3 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          {startBalance !== DEFAULT_START_BALANCE
+            ? `Bootstrapping projection for $${startBalance.toLocaleString()} starting balance (10,000 simulations × 130 days)... this can take 5-30 seconds.`
+            : 'Loading projection…'}
+        </div>
+      )}
+
       {/* Chart */}
       <div ref={containerRef} className="bg-gray-900/50 rounded p-1" />
+
+      {/* Scaling Ladder — current tier + next milestone */}
+      {data && (() => {
+        const ladder = data.projection?.scalingLadder || [];
+        const balance = data.currentBalance || data.startBalance;
+        let currentTierIdx = -1;
+        for (let i = ladder.length - 1; i >= 0; i--) {
+          if (balance >= ladder[i].min_balance) { currentTierIdx = i; break; }
+        }
+        const nextTier = currentTierIdx + 1 < ladder.length ? ladder[currentTierIdx + 1] : null;
+        const tierDesc = (t) => t.n_mnq ? `${t.n_mnq}×MNQ` : t.n_nq ? `${t.n_nq}×NQ` : 'flat';
+        return (
+          <div className="bg-gray-900/50 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-white">Scaling Ladder — when to bump contract size</h3>
+              {nextTier && (
+                <span className="text-xs text-amber-300">
+                  Next tier: <strong>{tierDesc(nextTier)}</strong> at ${nextTier.min_balance.toLocaleString()}
+                  <span className="text-gray-400 ml-2">(${(nextTier.min_balance - balance).toLocaleString()} away)</span>
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-1">
+              {ladder.map((t, i) => {
+                const isCurrent = i === currentTierIdx;
+                const isPast = i < currentTierIdx;
+                const isNext = i === currentTierIdx + 1;
+                let cls = 'bg-gray-800 text-gray-500 border-gray-700';
+                if (isCurrent) cls = 'bg-emerald-700/50 text-emerald-200 border-emerald-500 ring-2 ring-emerald-500';
+                else if (isPast) cls = 'bg-gray-700/30 text-gray-400 border-gray-600';
+                else if (isNext) cls = 'bg-amber-700/30 text-amber-200 border-amber-600';
+                return (
+                  <div key={i} className={`text-center p-1.5 rounded border text-xs ${cls}`}>
+                    <div className="font-mono text-[10px] opacity-75">${t.min_balance >= 1000 ? `${(t.min_balance/1000).toFixed(t.min_balance >= 10000 ? 0 : 1)}k` : t.min_balance}</div>
+                    <div className="font-semibold">{tierDesc(t)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MAE table */}
       <div className="bg-gray-900/50 rounded p-3">
