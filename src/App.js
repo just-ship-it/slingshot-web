@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import PlatformStatus from './components/PlatformStatus';
 import MacroBriefing from './components/MacroBriefing';
 import PnLPanel from './components/PnLPanel';
+import AccountTrackerPanel from './components/AccountTrackerPanel';
 import CompactHeader from './components/CompactHeader';
 import AccountsManager from './components/AccountsManager';
 import ToastContainer, { formatToastMessage } from './components/ToastContainer';
@@ -30,6 +31,7 @@ function App() {
   const [showMacroModal, setShowMacroModal] = useState(false);
   const [showPnLModal, setShowPnLModal] = useState(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
+  const [showAccountTrackerModal, setShowAccountTrackerModal] = useState(false);
 
   // Lifted state for header
   const [quotes, setQuotes] = useState({});
@@ -260,6 +262,7 @@ function App() {
         onStatusClick={() => setShowStatusModal(true)}
         onMacroClick={() => setShowMacroModal(true)}
         onPnLClick={() => setShowPnLModal(true)}
+        onAccountTrackerClick={() => setShowAccountTrackerModal(true)}
         onAccountsClick={() => setShowAccountsModal(true)}
         onLogout={handleLogout}
       />
@@ -337,6 +340,26 @@ function App() {
             </div>
             <div className="flex-1 overflow-y-auto">
               <PnLPanel />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Tracker Modal — wider (max-w-7xl) than P&L since it holds a chart + ladder + MAE table */}
+      {showAccountTrackerModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-6 px-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-7xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-white">Account Tracker — live vs. backtest projection</h2>
+              <button
+                onClick={() => setShowAccountTrackerModal(false)}
+                className="text-gray-400 hover:text-white transition-colors text-xl leading-none px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              <AccountTrackerPanel />
             </div>
           </div>
         </div>

@@ -12,7 +12,6 @@ import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
 import AlertPanel from './AlertPanel';
-import AccountTrackerPanel from './AccountTrackerPanel';
 import { api } from '../services/api';
 
 const Dashboard = ({
@@ -506,9 +505,6 @@ const Dashboard = ({
         )}
         <div className="panel-alerts" style={{ flex: '1 1 auto', minHeight: '100px' }}>
           <AlertPanel socket={socket} accounts={multiAccountData?.accounts || []} />
-        </div>
-        <div className="panel-account-tracker" style={{ marginTop: '12px' }}>
-          <AccountTrackerPanel />
         </div>
       </div>
 

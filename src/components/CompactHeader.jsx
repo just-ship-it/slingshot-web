@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, LineChart } from 'lucide-react';
 
 const TICKER_GROUPS = [
   { symbols: ['NQ', 'QQQ'], separator: false },
@@ -21,6 +21,7 @@ const CompactHeader = ({
   onStatusClick,
   onMacroClick,
   onPnLClick,
+  onAccountTrackerClick,
   onAccountsClick,
   onLogout,
 }) => {
@@ -83,6 +84,16 @@ const CompactHeader = ({
           }
         </span>
       </button>
+      {onAccountTrackerClick && (
+        <button
+          onClick={onAccountTrackerClick}
+          className="hover:bg-gray-700 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1"
+          title="Account Tracker — live vs backtest projection"
+        >
+          <LineChart className="w-4 h-4 text-blue-400" />
+          <span className="text-gray-300 hidden md:inline">Tracker</span>
+        </button>
+      )}
       <button
         onClick={onToggleTradingPanel}
         className={`desktop-only flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
