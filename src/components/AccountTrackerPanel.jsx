@@ -5,6 +5,7 @@ import { api } from '../services/api';
 
 const LS_KEY_START_DATE    = 'accountTracker.startDate';
 const LS_KEY_START_BALANCE = 'accountTracker.startBalance';
+const LS_KEY_ACCOUNT_ID    = 'accountTracker.accountId';
 const DEFAULT_START_BALANCE = 2000;  // matches precompute's default — no rebootstrap needed at this value
 
 const fmtUsd = (n) => {
@@ -37,6 +38,8 @@ function PercentileBadge({ pct }) {
 export default function AccountTrackerPanel() {
   const [startDate, setStartDate] = useState(() => localStorage.getItem(LS_KEY_START_DATE) || new Date().toISOString().slice(0, 10));
   const [startBalance, setStartBalance] = useState(() => parseFloat(localStorage.getItem(LS_KEY_START_BALANCE) || '2000'));
+  const [accountId, setAccountId] = useState(() => localStorage.getItem(LS_KEY_ACCOUNT_ID) || '');
+  const [accounts, setAccounts] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -48,19 +51,29 @@ export default function AccountTrackerPanel() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await api.getAccountTracker(startDate, startBalance);
+      const resp = await api.getAccountTracker(startDate, startBalance, accountId || null);
       setData(resp);
     } catch (err) {
       setError(err?.response?.data?.error || err.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [startDate, startBalance]);
+  }, [startDate, startBalance, accountId]);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY_START_DATE, startDate);
     localStorage.setItem(LS_KEY_START_BALANCE, String(startBalance));
-  }, [startDate, startBalance]);
+    localStorage.setItem(LS_KEY_ACCOUNT_ID, accountId);
+  }, [startDate, startBalance, accountId]);
+
+  // Load the configured accounts list once (for the dropdown).
+  useEffect(() => {
+    let cancelled = false;
+    api.getAccounts().then(r => {
+      if (!cancelled) setAccounts(Array.isArray(r?.accounts) ? r.accounts : []);
+    }).catch(() => { /* dropdown stays empty; user can still use "All accounts" */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -69,11 +82,16 @@ export default function AccountTrackerPanel() {
   }, [fetchData]);
 
   // ── Chart setup ──────────────────────────────────────────────────────
+  // Chart height: scale with viewport so 4k monitors get a proper-size chart.
+  // Floor at 360px (works in the smaller P&L-style modal); ceiling at 800px;
+  // target ~55% of viewport height. The modal itself is max-h 92vh.
+  const computeChartHeight = () => Math.max(360, Math.min(800, Math.floor(window.innerHeight * 0.55)));
+
   useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: 320,
+      height: computeChartHeight(),
       layout: { background: { type: 'solid', color: '#1f2937' }, textColor: '#d1d5db' },
       grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
       timeScale: { timeVisible: false, borderColor: '#374151' },
@@ -88,12 +106,20 @@ export default function AccountTrackerPanel() {
     seriesRefs.current.bandP25 = chart.addSeries(AreaSeries, { lineColor: 'rgba(59,130,246,0.10)', topColor: 'rgba(59,130,246,0.30)', bottomColor: 'rgba(59,130,246,0.05)', lineWidth: 1 });
     seriesRefs.current.bandP10 = chart.addSeries(AreaSeries, { lineColor: 'rgba(59,130,246,0.05)', topColor: 'rgba(59,130,246,0.18)', bottomColor: 'rgba(59,130,246,0.02)', lineWidth: 1 });
     seriesRefs.current.median  = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, lineStyle: 2 });
-    seriesRefs.current.actual  = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 3 });
+    // Actual = YOUR live account balance, day-over-day. Bright lime green,
+    // thicker line, drawn last so it sits on top of the bands.
+    seriesRefs.current.actual  = chart.addSeries(LineSeries, {
+      color: '#84cc16', lineWidth: 4, priceLineVisible: true,
+      lastValueVisible: true, crosshairMarkerRadius: 5,
+    });
     seriesRefs.current.ladderLines = [];  // populated by ladder useEffect below
 
     const resize = () => {
       if (containerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+        chartRef.current.applyOptions({
+          width: containerRef.current.clientWidth,
+          height: computeChartHeight(),
+        });
       }
     };
     window.addEventListener('resize', resize);
@@ -183,6 +209,18 @@ export default function AccountTrackerPanel() {
       {/* Controls */}
       <div className="flex flex-wrap gap-4 items-end bg-gray-900/50 rounded p-3">
         <div>
+          <label className="block text-xs text-gray-400 mb-1">Account</label>
+          <select value={accountId} onChange={e => setAccountId(e.target.value)}
+            className="bg-gray-700 text-gray-100 text-sm rounded px-2 py-1 border border-gray-600 min-w-[12rem]">
+            <option value="">All accounts (aggregated)</option>
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.label || a.name || a.id}{a.broker ? ` — ${a.broker}` : ''}{a.enabled === false ? ' (disabled)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block text-xs text-gray-400 mb-1">Start Date</label>
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
             className="bg-gray-700 text-gray-100 text-sm rounded px-2 py-1 border border-gray-600" />
@@ -228,8 +266,33 @@ export default function AccountTrackerPanel() {
         </div>
       )}
 
-      {/* Chart */}
-      <div ref={containerRef} className="bg-gray-900/50 rounded p-1" />
+      {/* Legend + chart */}
+      <div className="bg-gray-900/50 rounded p-2">
+        <div className="flex flex-wrap items-center gap-4 px-2 pb-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 text-lime-400">
+            <span className="inline-block w-4 h-1 rounded bg-lime-500"></span>
+            <strong>Your actual balance</strong> (day-over-day, from live trades)
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-blue-300">
+            <span className="inline-block w-4 h-0.5 rounded border-t-2 border-dashed border-blue-400"></span>
+            Projected median (p50)
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-blue-300/70">
+            <span className="inline-block w-4 h-2 rounded bg-blue-500/30"></span>
+            Projection bands (p10–p90)
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-amber-300/80">
+            <span className="inline-block w-4 h-0.5 rounded border-t border-dashed border-amber-400"></span>
+            Scaling-ladder thresholds
+          </span>
+        </div>
+        {data && (data.actualTrajectory?.length ?? 0) <= 1 && !loading && (
+          <div className="mx-2 mb-2 bg-amber-900/20 border border-amber-700/50 text-amber-200 text-xs rounded p-2">
+            Account is not actively trading yet. Once you fund the account and trades begin, your live balance will appear as a <strong className="text-lime-400">lime green line</strong> overlaid on the projection bands. Each closed trading day adds a new point.
+          </div>
+        )}
+        <div ref={containerRef} />
+      </div>
 
       {/* Scaling Ladder — current tier + next milestone */}
       {data && (() => {
@@ -358,10 +421,16 @@ export default function AccountTrackerPanel() {
         </div>
       )}
 
-      <div className="text-[10px] text-gray-500">
-        Bands show 10k-iteration bootstrap of historical daily PnL through the scaling ladder ({data?.projection?.scalingLadder?.length || 0} tiers).
-        Median + p25/p75/p10/p90 from start of {startDate}. Refreshes every 5 min.
-        Projection version: <span className="font-mono">{data?.projection?.version || '—'}</span>.
+      <div className="text-[10px] text-gray-500 space-y-0.5">
+        <div>
+          Bands show 10k-iteration bootstrap of historical daily PnL through the scaling ladder ({data?.projection?.scalingLadder?.length || 0} tiers).
+          Median + p25/p75/p10/p90 from start of {startDate}. Refreshes every 5 min.
+        </div>
+        <div>
+          Data source: <span className="font-mono text-gray-400">{data?.dataSource || '—'}</span>
+          {data?.accountId && <> · account: <span className="font-mono text-gray-400">{data.accountId}</span></>}
+          · projection version: <span className="font-mono text-gray-400">{data?.projection?.version || '—'}</span>
+        </div>
       </div>
     </div>
   );

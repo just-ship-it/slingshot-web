@@ -608,11 +608,14 @@ export const api = {
     return await apiClient.post('/api/pnl/sync');
   },
 
-  // Account tracker — projection bands + actual trajectory + MAE flags
-  async getAccountTracker(startDate, startBalance) {
+  // Account tracker — projection bands + actual trajectory + MAE flags.
+  // Pass accountId for per-account data (uses trade.metrics events); omit
+  // for aggregated-across-all-accounts data (uses pnl:daily).
+  async getAccountTracker(startDate, startBalance, accountId) {
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (startBalance != null) params.set('startBalance', String(startBalance));
+    if (accountId) params.set('accountId', accountId);
     return await apiClient.get(`/api/account-tracker?${params.toString()}`);
   },
 
