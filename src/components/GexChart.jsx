@@ -245,17 +245,16 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   // Update candlestick data with real-time OHLC
   useEffect(() => {
     if (!seriesRef.current || !quote?.close || !chartReady) return;
-    // [2026-05-22] Removed the `if (!quote.candleTimestamp) return;` gate.
     // L1 ticks (Schwab 1Hz, candleTimestamp=null) update the in-progress
     // bar; CHART_FUTURES bars (1/min, candleTimestamp set) finalize it.
     //
-    // [2026-05-26] CRITICAL FIX for duplicate-last-candle bug:
-    // Bucket OHLCV bars by their candleTimestamp (the bar's actual minute),
-    // NOT the publish-time `quote.timestamp`. Schwab CHART_FUTURES bars for
-    // minute T frequently arrive 1-3s into minute T+1 (network latency),
-    // so floor(publish_ts/60) lands in T+1 and the bar's OHLC overwrites
-    // the wrong candle. Manifestation: "last candle gets duplicated"
-    // (minute T+1 shows minute T's values) until refresh.
+    // [2026-05-26 fix] Bucket OHLCV bars by their candleTimestamp (the bar's
+    // actual minute), NOT the publish-time `quote.timestamp`. Schwab
+    // CHART_FUTURES bars for minute T frequently arrive 1-3s into minute T+1
+    // (network latency), so floor(publish_ts/60) lands in T+1 and the bar's
+    // OHLC overwrites the wrong candle. THIS is the only logic change vs
+    // the prior version — everything else (setData on new bar, etc.) is
+    // unchanged because the prior version was working except for this dup.
     const hasCandelOHLCV = !!quote.candleTimestamp;
     const tickTsSec = quote.timestamp ? new Date(quote.timestamp).getTime() / 1000 : Math.floor(Date.now() / 1000);
     const ohlcvTsSec = hasCandelOHLCV ? new Date(quote.candleTimestamp).getTime() / 1000 : tickTsSec;
@@ -270,45 +269,42 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     const history = candleHistoryRef.current;
     const lastCandle = history[history.length - 1];
 
-    // Reject any L1 tick whose candle is BEHIND the last known bar — this
-    // happens during clock skew or replay glitches and silently breaks the
-    // chart. OHLCV bars (authoritative) are still allowed to update past
-    // bars below via the existingIndex branch.
-    if (!hasCandelOHLCV && lastCandle && candleTime < lastCandle.time) return;
+    // Helper: setData() resets the visible time scale (snaps the chart back
+    // to right-anchored default), which is disruptive when the user has
+    // panned/zoomed. Preserve their view across setData calls. Lightweight-
+    // charts has no built-in "setData but keep view" — capture-and-restore
+    // is the standard workaround.
+    const preserveView = (mutator) => {
+      const ts = chartRef.current?.timeScale();
+      const visibleRange = ts?.getVisibleLogicalRange?.() ?? null;
+      mutator();
+      if (visibleRange && ts) {
+        try { ts.setVisibleLogicalRange(visibleRange); } catch {}
+      }
+    };
 
     if (lastCandle && lastCandle.time === candleTime) {
       if (hasCandelOHLCV) { lastCandle.open = candle.open; lastCandle.high = candle.high; lastCandle.low = candle.low; }
       else { lastCandle.high = Math.max(lastCandle.high, candle.close); lastCandle.low = Math.min(lastCandle.low, candle.close); }
       lastCandle.close = candle.close;
-      seriesRef.current.update(lastCandle);
+      seriesRef.current.update(lastCandle);    // .update() does NOT reset the time scale
     } else if (!lastCandle || candleTime > lastCandle.time) {
-      // New bar boundary. Fill any gap between lastCandle.time and candleTime
-      // with carry-forward bars so the chart x-axis stays continuous and a
-      // late OHLCV correction can still find an existingIndex match.
-      if (lastCandle && candleTime > lastCandle.time + 60) {
-        for (let t = lastCandle.time + 60; t < candleTime; t += 60) {
-          history.push({ time: t, open: lastCandle.close, high: lastCandle.close, low: lastCandle.close, close: lastCandle.close });
-        }
-      }
       history.push(candle);
-      if (history.length > 60) history.splice(0, history.length - 60);
-      // Use update() for incremental — never setData() here, which would
-      // race with any concurrent .update() call from a fast tick burst.
-      seriesRef.current.update(candle);
+      // [2026-05-26 fix] Cap was 60 (= 1 hour), but the initial fetch loads
+      // 180 (= 3 hours). Over the first 2 hours of live trading, .shift()
+      // pruned the fetched candles down to 60, manifesting as "the chart
+      // suddenly shows only the last hour". Cap is now 600 (10 hours) so
+      // a normal session never trims fetched data.
+      if (history.length > 600) history.shift();
+      preserveView(() => seriesRef.current.setData(history));
     } else {
-      // Late OHLCV bar correction (existing candle in the middle of history).
       const existingIndex = history.findIndex(c => c.time === candleTime);
       if (existingIndex >= 0) {
         if (hasCandelOHLCV) { history[existingIndex] = candle; }
         else { history[existingIndex].high = Math.max(history[existingIndex].high, candle.close); history[existingIndex].low = Math.min(history[existingIndex].low, candle.close); history[existingIndex].close = candle.close; }
-        // Only this case still needs setData — lightweight-charts.update()
-        // only patches the most-recent bar, not past bars.
-        seriesRef.current.setData(history);
+        preserveView(() => seriesRef.current.setData(history));
       }
     }
-    // [2026-05-21] ZG time-series extension removed — ZG is now a horizontal
-    // priceLine drawn in the GEX-level useEffect below, refreshed on every
-    // gexLevels update like every other level.
   }, [quote, chartReady]);
 
   // GEX level lines
