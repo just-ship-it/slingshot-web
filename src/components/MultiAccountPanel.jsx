@@ -39,7 +39,9 @@ const getModeBadge = (account) => {
   return <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300">Demo</span>;
 };
 
-/** Positions table for an account */
+/** Positions list for an account. Two-line card per position so the
+ * strategy name has room without horizontal scrolling. One position per
+ * symbol max, so a list is the right shape — no table-style scanning needed. */
 const PositionsTable = ({ positions }) => {
   if (!positions || positions.length === 0) {
     return (
@@ -47,49 +49,55 @@ const PositionsTable = ({ positions }) => {
     );
   }
 
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-gray-400 text-xs uppercase tracking-wider">
-          <th className="text-left px-4 py-1.5 font-medium">Symbol</th>
-          <th className="text-left px-2 py-1.5 font-medium">Side</th>
-          <th className="text-right px-2 py-1.5 font-medium">Qty</th>
-          <th className="text-right px-2 py-1.5 font-medium">Entry</th>
-          <th className="text-right px-2 py-1.5 font-medium">SL / TP</th>
-          <th className="text-right px-2 py-1.5 font-medium">Current</th>
-          <th className="text-right px-2 py-1.5 font-medium">P&L</th>
-          <th className="text-left px-4 py-1.5 font-medium">Strategy</th>
-        </tr>
-      </thead>
-      <tbody>
-        {positions.map((pos, i) => {
-          const side = (pos.side || '').toLowerCase();
-          const isLong = side === 'long' || (pos.netPos && pos.netPos > 0);
-          const qty = Math.abs(pos.netPos || pos.quantity || 0);
-          const fmtPrice = (v) => v != null ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+  const fmtPrice = (v) => v != null ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
-          return (
-            <tr key={pos.positionId || pos.symbol || i} className="border-t border-gray-700/50">
-              <td className="px-4 py-1.5 text-gray-200 font-medium">{pos.symbol}</td>
-              <td className="px-2 py-1.5">
-                <span className={`w-2 h-2 rounded-full inline-block ${isLong ? 'bg-green-400' : 'bg-red-400'}`} title={isLong ? 'Long' : 'Short'} />
-              </td>
-              <td className="px-2 py-1.5 text-right text-gray-200">{qty}</td>
-              <td className="px-2 py-1.5 text-right text-gray-300 font-mono">{fmtPrice(pos.entryPrice)}</td>
-              <td className="px-2 py-0.5 text-right font-mono text-xs leading-tight">
-                <div className="text-red-400/70">{fmtPrice(pos.stopLoss)}</div>
-                <div className="text-green-400/70">{fmtPrice(pos.takeProfit)}</div>
-              </td>
-              <td className="px-2 py-1.5 text-right text-gray-200 font-mono">{fmtPrice(pos.currentPrice)}</td>
-              <td className={`px-2 py-1.5 text-right font-semibold ${getPnLColor(pos.unrealizedPnL)}`}>
+  return (
+    <div className="divide-y divide-gray-700/50">
+      {positions.map((pos, i) => {
+        const side = (pos.side || '').toLowerCase();
+        const isLong = side === 'long' || (pos.netPos && pos.netPos > 0);
+        const qty = Math.abs(pos.netPos || pos.quantity || 0);
+        const signedQty = `${isLong ? '+' : '-'}${qty}`;
+
+        return (
+          <div key={pos.positionId || pos.symbol || i} className="px-4 py-2">
+            {/* Top row: side + symbol + strategy + P&L */}
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isLong ? 'bg-green-400' : 'bg-red-400'}`} title={isLong ? 'Long' : 'Short'} />
+                <span className="text-gray-200 font-medium">{pos.symbol}</span>
+                <span className="text-gray-300 font-mono text-xs">{signedQty}</span>
+                <span className="text-gray-400 text-xs truncate" title={pos.strategy || ''}>
+                  {pos.strategy || '--'}
+                </span>
+              </div>
+              <span className={`font-semibold text-sm flex-shrink-0 ${getPnLColor(pos.unrealizedPnL)}`}>
                 {formatPnL(pos.unrealizedPnL)}
-              </td>
-              <td className="px-4 py-1.5 text-gray-400 text-xs">{pos.strategy || '--'}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+              </span>
+            </div>
+            {/* Bottom row: Entry • SL • TP • Current — compact monospace strip */}
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs font-mono">
+              <span>
+                <span className="text-gray-500 mr-1">Entry</span>
+                <span className="text-gray-300">{fmtPrice(pos.entryPrice)}</span>
+              </span>
+              <span>
+                <span className="text-gray-500 mr-1">SL</span>
+                <span className="text-red-400/80">{fmtPrice(pos.stopLoss)}</span>
+              </span>
+              <span>
+                <span className="text-gray-500 mr-1">TP</span>
+                <span className="text-green-400/80">{fmtPrice(pos.takeProfit)}</span>
+              </span>
+              <span>
+                <span className="text-gray-500 mr-1">@</span>
+                <span className="text-gray-200">{fmtPrice(pos.currentPrice)}</span>
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 };
 
