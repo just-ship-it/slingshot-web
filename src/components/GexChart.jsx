@@ -15,6 +15,76 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', resizeObserverHandler, true);
 }
 
+// EOD force-flat time (wall clock, ET). Mirrors trade-orchestrator's
+// EOD_CUTOFF_ET=15:45 (see memory/production-eod-cutoff.md). Edit here if
+// the orchestrator's cutoff ever changes.
+const EOD_CUTOFF_HOUR_ET = 15;
+const EOD_CUTOFF_MIN_ET = 45;
+
+/** Minutes from now until `HH:MM` ET. Negative if past. */
+function minsUntilEt(targetHour, targetMin) {
+  const nowEt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hour12: false,
+  }).format(new Date());
+  // "15:45" or "9:45"; "24:NN" rolls to "00:NN" in some locales — coerce.
+  const [hStr, mStr] = nowEt.split(':');
+  const h = Number(hStr) === 24 ? 0 : Number(hStr);
+  const m = Number(mStr);
+  return (targetHour * 60 + targetMin) - (h * 60 + m);
+}
+
+/** "1h 47m" / "12m" / "—" for a duration in minutes. */
+function fmtMins(mins) {
+  if (mins == null || Number.isNaN(mins)) return '—';
+  if (mins < 0) return '—';
+  if (mins < 60) return `${Math.floor(mins)}m`;
+  const h = Math.floor(mins / 60);
+  const m = Math.floor(mins % 60);
+  return `${h}h ${m}m`;
+}
+
+/** Floating per-position badge: strategy / side / qty / entry / timers / pnl. */
+function PositionBadge({ position: p }) {
+  const isLong = p.side === 'long';
+  const qty = Math.abs(Number(p.netPos) || 1);
+  const sideColor = isLong ? 'text-green-400' : 'text-red-400';
+  const stratLabel = (p.strategy || 'UNATTRIBUTED').replace(/_/g, ' ');
+  const openedAtMs = p.openedAt ? Date.parse(p.openedAt) : null;
+  const inTradeMins = openedAtMs ? (Date.now() - openedAtMs) / 60000 : null;
+  const eodMins = minsUntilEt(EOD_CUTOFF_HOUR_ET, EOD_CUTOFF_MIN_ET);
+  const pnl = typeof p.unrealizedPnL === 'number' ? p.unrealizedPnL : null;
+  const pnlColor = pnl == null ? 'text-gray-300' : pnl >= 0 ? 'text-green-400' : 'text-red-400';
+
+  return (
+    <div className="bg-gray-900 bg-opacity-85 rounded px-2 py-1.5 text-[10px] leading-tight min-w-[140px] border border-gray-700">
+      <div className={`font-bold ${sideColor} mb-0.5`}>
+        {stratLabel}
+      </div>
+      <div className="text-gray-300">
+        {isLong ? 'LONG' : 'SHORT'} {qty} @ {Number(p.entryPrice)?.toFixed(2) || '—'}
+      </div>
+      <div className="flex justify-between gap-2 text-gray-400 mt-0.5">
+        <span>open</span>
+        <span className="text-gray-200">{fmtMins(inTradeMins)}</span>
+      </div>
+      <div className="flex justify-between gap-2 text-gray-400">
+        <span>EOD in</span>
+        <span className={eodMins != null && eodMins <= 15 ? 'text-yellow-400 font-bold' : 'text-gray-200'}>
+          {fmtMins(eodMins)}
+        </span>
+      </div>
+      {pnl != null && (
+        <div className="flex justify-between gap-2 text-gray-400 mt-0.5 border-t border-gray-700 pt-0.5">
+          <span>P&L</span>
+          <span className={pnlColor + ' font-bold'}>
+            {pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn, ltLevels, lsStatus, onProductChange }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -33,6 +103,15 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   // and removes the time-series accumulation cost.
 
   const [chartReady, setChartReady] = useState(false);
+
+  // Live open positions for the chart's current product (NQ or ES). Polled
+  // every 5s from /api/positions and filtered down to the symbols on this
+  // chart. Drives both the on-chart entry/TP/SL price lines AND the floating
+  // strategy badge with time-in-trade + time-to-EOD-flat countdowns.
+  const [livePositions, setLivePositions] = useState([]);
+  // Ticker for live countdown re-renders (1Hz). Keeps the badge timers fresh
+  // without re-fetching /api/positions every second.
+  const [, setTickNow] = useState(Date.now());
 
   const isNQ = product === 'nq';
   const isES = product === 'es';
@@ -100,6 +179,43 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
   }, [quote?.close, gexLevels, strategyStatus]);
 
   useEffect(() => { productRef.current = product; }, [product]);
+
+  // Poll open positions for this chart's product. Symbol filter: NQ chart
+  // matches "NQ*"/"MNQ*"; ES matches "ES*"/"MES*". `accountId` is intentionally
+  // not filtered — we want to see ALL open positions regardless of account.
+  useEffect(() => {
+    let cancelled = false;
+    const wantedRoots = product === 'nq' ? ['NQ', 'MNQ'] : ['ES', 'MES'];
+    const matchesProduct = (sym) => {
+      if (!sym) return false;
+      const root = String(sym).replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, '').toUpperCase();
+      return wantedRoots.includes(root);
+    };
+
+    const tick = async () => {
+      try {
+        const all = await api.getAllPositions();
+        if (cancelled) return;
+        const filtered = (Array.isArray(all) ? all : [])
+          .filter(p => p && p.netPos && matchesProduct(p.symbol));
+        setLivePositions(filtered);
+      } catch {
+        // Network blip — keep previous state, retry next interval.
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [product]);
+
+  // 1Hz tick to refresh time-in-trade / EOD countdown displays without
+  // re-fetching positions.
+  useEffect(() => {
+    if (livePositions.length === 0) return;
+    const id = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [livePositions.length]);
 
   // Clear chart data when product switches to prevent stale lines
   useEffect(() => {
@@ -329,26 +445,38 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     gexLevels.support?.forEach((level, i) => createLine(level, `S${i + 1}`, '#06b6d4', 2));
   }, [gexLevels, chartReady]);
 
-  // Position lines
+  // Position lines: render entry / TP / SL for each live position on this
+  // chart's product. Replaces the prior IV-SKEW-GEX-only overlay that
+  // hard-coded TP/SL at entry ±7/±3 — now uses real broker-side levels for
+  // any active strategy (GEX-LT-3M, GEX-FLIP-IVPCT, GEX-LEVEL-FADE,
+  // LS-FLIP-TRIGGER-BAR, etc.).
   useEffect(() => {
     if (!seriesRef.current || !chartReady) return;
     positionLinesRef.current.forEach(line => { try { seriesRef.current.removePriceLine(line); } catch (e) {} });
     positionLinesRef.current = [];
-    const position = strategyStatus?.position?.current;
-    if (position && strategyStatus?.position?.in_position) {
-      const createPositionLine = (price, title, color, lineStyle = 0, lineWidth = 2) => {
-        if (!price || price === 0) return;
-        try {
-          const line = seriesRef.current.createPriceLine({ price, color, lineWidth, lineStyle, axisLabelVisible: true, title });
-          positionLinesRef.current.push(line);
-        } catch (e) {}
-      };
-      createPositionLine(position.entry_price, 'ENTRY', '#ffffff', 0, 2);
-      const isLong = position.side === 'long';
-      createPositionLine(isLong ? position.entry_price + 7 : position.entry_price - 7, 'TGT', '#22c55e', 2, 1);
-      createPositionLine(isLong ? position.entry_price - 3 : position.entry_price + 3, 'STOP', '#ef4444', 2, 1);
+
+    const createPositionLine = (price, title, color, lineStyle = 0, lineWidth = 2) => {
+      if (price == null || Number.isNaN(Number(price)) || Number(price) === 0) return;
+      try {
+        const line = seriesRef.current.createPriceLine({
+          price: Number(price), color, lineWidth, lineStyle,
+          axisLabelVisible: true, title,
+        });
+        positionLinesRef.current.push(line);
+      } catch (e) { /* lightweight-charts can throw mid-resize */ }
+    };
+
+    for (const pos of livePositions) {
+      const qty = Math.abs(Number(pos.netPos) || 1);
+      const sidePrefix = pos.side === 'long' ? 'L' : 'S';
+      // Tag each line with strategy so multiple positions on the same symbol
+      // stay disambiguated on the price axis labels.
+      const stratTag = (pos.strategy || '?').replace(/_/g, ' ').slice(0, 16);
+      createPositionLine(pos.entryPrice, `${sidePrefix}${qty} ${stratTag}`, '#ffffff', 0, 2);
+      createPositionLine(pos.takeProfit, 'TP',  '#22c55e', 2, 1);
+      createPositionLine(pos.stopLoss,   'SL',  '#ef4444', 2, 1);
     }
-  }, [strategyStatus?.position, chartReady]);
+  }, [livePositions, chartReady]);
 
   // LT level lines
   useEffect(() => {
@@ -474,25 +602,14 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
           </div>
         )}
 
-        {/* Position overlay (top-right) */}
-        {strategyDisplay.inPosition && strategyDisplay.position && (
-          <div className="absolute top-2 right-2 bg-gray-900 bg-opacity-80 rounded px-2 py-1.5 text-[10px] z-10">
-            <div className={`font-bold mb-0.5 ${strategyDisplay.position.side === 'long' ? 'text-green-400' : 'text-red-400'}`}>
-              {strategyDisplay.position.side?.toUpperCase()} @ {strategyDisplay.position.entry_price?.toFixed(2)}
-            </div>
-            {strategyDisplay.currentPrice && (
-              <div className="text-gray-300">
-                P&L: <span className={strategyDisplay.position.side === 'long'
-                  ? (strategyDisplay.currentPrice >= strategyDisplay.position.entry_price ? 'text-green-400' : 'text-red-400')
-                  : (strategyDisplay.currentPrice <= strategyDisplay.position.entry_price ? 'text-green-400' : 'text-red-400')
-                }>
-                  {strategyDisplay.position.side === 'long'
-                    ? (strategyDisplay.currentPrice - strategyDisplay.position.entry_price).toFixed(2)
-                    : (strategyDisplay.position.entry_price - strategyDisplay.currentPrice).toFixed(2)
-                  } pts
-                </span>
-              </div>
-            )}
+        {/* Position badges (top-right, stacked) — one per live position on
+            this chart's product. Shows strategy/side/qty/entry plus countdown
+            timers for time-in-trade and time until EOD force-flat (15:45 ET). */}
+        {livePositions.length > 0 && (
+          <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-10">
+            {livePositions.map((p) => (
+              <PositionBadge key={`${p.accountId}-${p.symbol}-${p.strategy || 'X'}`} position={p} />
+            ))}
           </div>
         )}
 
