@@ -468,9 +468,9 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
 
     for (const pos of livePositions) {
       const qty = Math.abs(Number(pos.netPos) || 1);
-      const sidePrefix = pos.side === 'long' ? 'L' : 'S';
-      // Tag each line with strategy so multiple positions on the same symbol
-      // stay disambiguated on the price axis labels.
+      // +N for long, -N for short. Avoids the visual collision with GEX
+      // "S1" support / "L1" level labels also drawn on this chart.
+      const sidePrefix = pos.side === 'long' ? '+' : '-';
       const stratTag = (pos.strategy || '?').replace(/_/g, ' ').slice(0, 16);
       createPositionLine(pos.entryPrice, `${sidePrefix}${qty} ${stratTag}`, '#ffffff', 0, 2);
       createPositionLine(pos.takeProfit, 'TP',  '#22c55e', 2, 1);
