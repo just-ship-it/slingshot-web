@@ -473,8 +473,8 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
       const sidePrefix = pos.side === 'long' ? '+' : '-';
       const stratTag = (pos.strategy || '?').replace(/_/g, ' ').slice(0, 16);
       createPositionLine(pos.entryPrice, `${sidePrefix}${qty} ${stratTag}`, '#ffffff', 0, 2);
-      createPositionLine(pos.takeProfit, 'TP',  '#22c55e', 2, 1);
-      createPositionLine(pos.stopLoss,   'SL',  '#ef4444', 2, 1);
+      createPositionLine(pos.takeProfit, 'TP',  '#22c55e', 2, 2);
+      createPositionLine(pos.stopLoss,   'SL',  '#ef4444', 2, 2);
     }
   }, [livePositions, chartReady]);
 
