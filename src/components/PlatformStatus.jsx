@@ -761,16 +761,11 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                 </div>
               </div>
 
-              {/* Connection Badges */}
+              {/* Connection Badges. Note: there is no separate "TV" badge — since the
+                  2026-05-22 Schwab migration the only live TradingView connection is the
+                  LT Monitor (LT/LS Pine studies); quotes/candles come from Schwab. */}
               {signalGeneratorConnections?.connections && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    signalGeneratorConnections.connections.tradingview?.connected
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {signalGeneratorConnections.connections.tradingview?.connected ? '✓' : '✗'} TV
-                  </span>
                   {!signalGeneratorConnections.connections.ltMonitor?.notRequired && (
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       signalGeneratorConnections.connections.ltMonitor?.connected
@@ -803,25 +798,22 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
               {/* Expanded Connection Details */}
               {sgConnectionsExpanded && signalGeneratorConnections?.connections && (
                 <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
-                  {/* TradingView */}
+                  {/* TradingView Session — token/auto-refresh only. Since the 2026-05-22
+                      Schwab migration, the TradingViewClient WS is no longer opened
+                      (quotes/candles come from Schwab); the only live TradingView
+                      connection is the LT Monitor below. So we no longer show the old
+                      (always-disconnected) "TV connector" status — just the JWT health
+                      and the token/session bootstrap controls. */}
                   <div className="bg-gray-800/50 rounded p-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">TradingView WebSocket</span>
-                      <span className={`text-xs ${signalGeneratorConnections.connections.tradingview?.connected ? 'text-green-400' : 'text-red-400'}`}>
-                        {signalGeneratorConnections.connections.tradingview?.connected ? 'Connected' : 'Disconnected'}
-                      </span>
+                      <span className="text-white text-sm font-medium">TradingView Session</span>
+                      <span className="text-xs text-gray-400">token / auto-refresh</span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Auth State:</span> <span className={
-                        signalGeneratorConnections.connections.tradingview?.authState === 'authenticated' ? 'text-green-400' :
-                        signalGeneratorConnections.connections.tradingview?.authState === 'delayed' ? 'text-red-400' : 'text-yellow-400'
-                      }>{(signalGeneratorConnections.connections.tradingview?.authState || 'unknown').charAt(0).toUpperCase() + (signalGeneratorConnections.connections.tradingview?.authState || 'unknown').slice(1)}</span></div>
+                    <div className="grid grid-cols-2 gap-2 mt-1 text-xs">
                       <div><span className="text-gray-400">Token TTL:</span> <span className={
                         signalGeneratorConnections.connections.tradingview?.tokenTTL != null && signalGeneratorConnections.connections.tradingview.tokenTTL < 0 ? 'text-red-400' :
                         signalGeneratorConnections.connections.tradingview?.tokenTTL != null && signalGeneratorConnections.connections.tradingview.tokenTTL < 3600 ? 'text-yellow-400' : 'text-white'
                       }>{formatTTL(signalGeneratorConnections.connections.tradingview?.tokenTTL)}</span></div>
-                      <div><span className="text-gray-400">Last Quote:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradingview?.lastQuoteReceived)}</span></div>
-                      <div><span className="text-gray-400">Reconnects:</span> <span className="text-white">{signalGeneratorConnections.connections.tradingview?.reconnectAttempts || 0}</span></div>
                     </div>
                     {/* Set Token + Bootstrap Session */}
                     <div className="mt-2 flex flex-col gap-2">
@@ -920,7 +912,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                   {!signalGeneratorConnections.connections.ltMonitor?.notRequired && (
                     <div className="bg-gray-800/50 rounded p-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-white text-sm font-medium">LT Monitor WebSocket</span>
+                        <span className="text-white text-sm font-medium">LT Monitor <span className="text-gray-400 font-normal">(TradingView WS)</span></span>
                         <span className={`text-xs ${signalGeneratorConnections.connections.ltMonitor?.connected ? 'text-green-400' : 'text-red-400'}`}>
                           {signalGeneratorConnections.connections.ltMonitor?.connected ? 'Connected' : 'Disconnected'}
                         </span>
