@@ -1344,7 +1344,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                         </div>
                         <div className="text-xs text-gray-400 space-y-1">
                           <div className="flex justify-between"><span>Point Value:</span><span className="text-white">${settings.pointValue}</span></div>
-                          <div className="flex justify-between"><span>Max Loss (52 pts):</span><span className="text-white">${(52 * settings.pointValue).toFixed(0)}</span></div>
+                          <div className="flex justify-between"><span>Max Loss (52 pts):</span><span className="text-white">${(52 * settings.pointValue).toFixed(2)}</span></div>
                         </div>
                       </div>
                     </div>

@@ -459,7 +459,7 @@ const DailyList = ({ days, maxPnl, cumByDate }) => (
               />
             </div>
             <span className={`text-[10px] font-mono ${cumVal >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
-              cum {cumVal >= 0 ? '+' : '-'}${Math.abs(Math.round(cumVal * 100) / 100).toFixed(0)}
+              cum {cumVal >= 0 ? '+' : '-'}${Math.abs(cumVal).toFixed(2)}
             </span>
           </div>
         </div>

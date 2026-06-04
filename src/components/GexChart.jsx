@@ -77,7 +77,7 @@ function PositionBadge({ position: p }) {
         <div className="flex justify-between gap-2 text-gray-400 mt-0.5 border-t border-gray-700 pt-0.5">
           <span>P&L</span>
           <span className={pnlColor + ' font-bold'}>
-            {pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}
+            {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
           </span>
         </div>
       )}
@@ -641,7 +641,7 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Pos:</span>
                 <span className={strategyDisplay.inPosition ? 'text-yellow-400' : 'text-gray-300'}>
-                  {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(0)}` : 'Flat'}
+                  {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(2)}` : 'Flat'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -663,7 +663,7 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
             <div className="flex items-center gap-1.5">
               <span className="text-gray-400">Pos:</span>
               <span className={strategyDisplay.inPosition ? 'text-yellow-400' : 'text-gray-300'}>
-                {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(0)}` : 'Flat'}
+                {strategyDisplay.inPosition ? `${strategyDisplay.position?.side?.toUpperCase()} @ ${strategyDisplay.position?.entry_price?.toFixed(2)}` : 'Flat'}
               </span>
             </div>
           )}

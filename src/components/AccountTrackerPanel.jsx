@@ -13,7 +13,7 @@ const fmtUsd = (n) => {
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
   if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  return `${sign}$${abs.toFixed(0)}`;
+  return `${sign}$${abs.toFixed(2)}`;
 };
 
 const fmtUsdExact = (n) =>

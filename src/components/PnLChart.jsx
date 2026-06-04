@@ -37,14 +37,14 @@ const PnLChart = ({ data, accountId }) => {
 
             <div className="text-center">
               <div className="text-xl font-semibold text-yellow-400">
-                ${data.accountPnL?.reduce((sum, acc) => sum + (acc.equity || 0), 0).toFixed(0) || '0'}
+                ${data.accountPnL?.reduce((sum, acc) => sum + (acc.equity || 0), 0).toFixed(2) || '0'}
               </div>
               <div className="text-sm text-gray-400">Total Equity</div>
             </div>
 
             <div className="text-center">
               <div className="text-xl font-semibold text-purple-400">
-                ${data.accountPnL?.reduce((sum, acc) => sum + (acc.balance || 0), 0).toFixed(0) || '0'}
+                ${data.accountPnL?.reduce((sum, acc) => sum + (acc.balance || 0), 0).toFixed(2) || '0'}
               </div>
               <div className="text-sm text-gray-400">Total Balance</div>
             </div>
