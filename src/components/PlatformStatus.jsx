@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { planFor, STRATEGY_PLAN, recommendationFor } from '../utils/accountGrowthPlan';
+import { planFor, STRATEGY_PLAN, recommendationFor, CONTRACT_LADDER, sizeFor } from '../utils/accountGrowthPlan';
 
 const PlatformStatus = ({ socket, tradovateStatus }) => {
   // Kill switch
@@ -43,6 +43,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   // toggled at the current LIVE account size; never enables/disables anything).
   const [planBalance, setPlanBalance] = useState(null);   // live account netLiq
   const [planAccountLabel, setPlanAccountLabel] = useState(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
 
   // Relay (values maintained via WebSocket handlers for internal tracking)
   const [, setRelayStatus] = useState({ isRunning: false, connectionUrl: null, lastError: null, uptime: 0 });
@@ -1153,7 +1154,13 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       <div className={`rounded p-2 mb-1 border text-xs ${mismatches.length ? 'bg-amber-900/20 border-amber-700/50' : 'bg-gray-800/40 border-gray-700/50'}`}>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-300">
-                            📋 Growth plan · <span className="text-white font-medium">${Math.round(planBalance).toLocaleString()}</span>
+                            📋 Growth plan
+                            <button
+                              onClick={() => setShowPlanModal(true)}
+                              title="View the full growth plan"
+                              className="ml-1 mr-1 text-gray-400 hover:text-white align-middle"
+                            >ⓘ</button>
+                            · <span className="text-white font-medium">${Math.round(planBalance).toLocaleString()}</span>
                             <span className="text-gray-500"> ({planAccountLabel})</span>
                             {' '}→ size <span className="text-white font-medium">{size.qty} {size.contract}</span>
                           </span>
@@ -1512,6 +1519,74 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
               <button onClick={() => { setShowJsonModal(false); setSelectedJsonData(null); }} className="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors">
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account-growth plan reference (read-only advisory) */}
+      {showPlanModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowPlanModal(false)}>
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-lg font-semibold text-white">📋 Account-Growth Plan <span className="text-xs font-normal text-gray-400">(aggressive)</span></h3>
+              <button onClick={() => setShowPlanModal(false)} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">Advisory only — these are the recommended settings by account size. Toggles stay manual; nothing here changes what runs.</p>
+            <div className="flex-1 overflow-auto space-y-4">
+
+              {/* Contract ladder */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-300 mb-1">Contract size by balance</h4>
+                <div className="bg-gray-900 rounded overflow-hidden text-xs">
+                  {CONTRACT_LADDER.map((t, i) => {
+                    const hi = CONTRACT_LADDER[i + 1]?.min;
+                    const current = planBalance != null && sizeFor(planBalance).min === t.min;
+                    return (
+                      <div key={t.min} className={`flex justify-between px-3 py-1 ${current ? 'bg-blue-900/40 text-white' : 'text-gray-300'} ${i ? 'border-t border-gray-800' : ''}`}>
+                        <span>${t.min.toLocaleString()}{hi ? `–$${hi.toLocaleString()}` : '+'}</span>
+                        <span className="font-medium">{t.qty} {t.contract}{current ? '  ← you are here' : ''}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Strategy phase-in */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-300 mb-1">Strategy phase-in</h4>
+                <div className="bg-gray-900 rounded overflow-hidden text-xs">
+                  <div className="flex justify-between px-3 py-1 text-gray-500 border-b border-gray-800">
+                    <span>strategy</span><span>enable at / disable below</span>
+                  </div>
+                  {Object.entries(STRATEGY_PLAN).map(([constant, p]) => {
+                    const rec = planBalance != null ? recommendationFor(constant, planBalance, null) : null;
+                    return (
+                      <div key={constant} className="px-3 py-1.5 border-t border-gray-800">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-200 font-medium">
+                            {p.alias}
+                            {rec && <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${rec === 'on' ? 'bg-green-900/50 text-green-300' : 'bg-gray-700/50 text-gray-400'}`}>plan: {rec}</span>}
+                          </span>
+                          <span className="text-gray-400">
+                            {p.on <= 0 ? 'always on' : `$${p.on.toLocaleString()} / $${p.off.toLocaleString()}`}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">{p.note}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-500">
+                Built from real-account survival modeling (block-bootstrap from $1.5k): 0% ruin · ~35% worst drawdown.
+                Drawdown floor is ~21% (lstb-only) to ~35% (all four). Source of truth:
+                <span className="text-gray-400"> backtest-engine/research/4strategy-portfolio/account-growth-plan.json</span>.
+              </p>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setShowPlanModal(false)} className="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors">Close</button>
             </div>
           </div>
         </div>
