@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { planFor, STRATEGY_PLAN, recommendationFor } from '../utils/accountGrowthPlan';
 
 const PlatformStatus = ({ socket, tradovateStatus }) => {
   // Kill switch
@@ -37,6 +38,11 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [strategies, setStrategies] = useState([]);
   const [strategiesExpanded, setStrategiesExpanded] = useState(true);
   const [strategyToggleLoading, setStrategyToggleLoading] = useState(null);
+
+  // Account-growth plan advisory (CLIENT-SIDE ONLY — recommends what should be
+  // toggled at the current LIVE account size; never enables/disables anything).
+  const [planBalance, setPlanBalance] = useState(null);   // live account netLiq
+  const [planAccountLabel, setPlanAccountLabel] = useState(null);
 
   // Relay (values maintained via WebSocket handlers for internal tracking)
   const [, setRelayStatus] = useState({ isRunning: false, connectionUrl: null, lastError: null, uptime: 0 });
@@ -154,6 +160,26 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       if (data?.strategies) setStrategies(data.strategies);
     } catch (err) {
       console.log('Strategies not available:', err.message);
+    }
+  };
+
+  // Pull the LIVE account's balance to drive the plan advisory. Deliberately
+  // the live account (config.mode === 'live'), NOT demo — the plan is about the
+  // real money. Falls back to the first account if no live one is configured.
+  const fetchPlanBalance = async () => {
+    try {
+      const { accounts } = await api.getAccounts();
+      if (!accounts?.length) return;
+      const live = accounts.find(a => a.config?.mode === 'live' && a.broker !== 'pickmytrade');
+      const acct = live || accounts[0];
+      const bal = await api.getAccountBalance(acct.id);
+      const netLiq = Number(bal?.netLiq ?? bal?.balance);
+      if (Number.isFinite(netLiq)) {
+        setPlanBalance(netLiq);
+        setPlanAccountLabel(`${acct.name || acct.id}${live ? '' : ' (demo — no live acct)'}`);
+      }
+    } catch (err) {
+      console.log('Plan balance not available:', err.message);
     }
   };
 
@@ -285,6 +311,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       fetchSignalGeneratorConnections(),
       fetchMacroBriefingHealth(),
       fetchStrategies(),
+      fetchPlanBalance(),
       checkRelayStatus()
     ]).catch(error => console.error('Background loading error:', error));
 
@@ -293,6 +320,7 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
       fetchSignalGeneratorConnections();
       fetchMacroBriefingHealth();
       fetchStrategies();
+      fetchPlanBalance();
     }, 60000);
 
     return () => clearInterval(healthCheckInterval);
@@ -1114,12 +1142,66 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
               {/* Expanded Strategy Details */}
               {strategiesExpanded && strategies.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
+                  {/* Account-growth plan advisory — recommendation only, never changes toggles */}
+                  {planBalance != null && (() => {
+                    const size = planFor(planBalance).size;
+                    const mismatches = strategies.filter(s => {
+                      const rec = recommendationFor(s.constant, planBalance, s.enabled);
+                      return rec && ((rec === 'on') !== !!s.enabled);
+                    });
+                    return (
+                      <div className={`rounded p-2 mb-1 border text-xs ${mismatches.length ? 'bg-amber-900/20 border-amber-700/50' : 'bg-gray-800/40 border-gray-700/50'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300">
+                            📋 Growth plan · <span className="text-white font-medium">${Math.round(planBalance).toLocaleString()}</span>
+                            <span className="text-gray-500"> ({planAccountLabel})</span>
+                            {' '}→ size <span className="text-white font-medium">{size.qty} {size.contract}</span>
+                          </span>
+                          {mismatches.length > 0
+                            ? <span className="text-amber-300 font-medium">{mismatches.length} toggle{mismatches.length > 1 ? 's' : ''} off-plan</span>
+                            : <span className="text-green-400">on plan ✓</span>}
+                        </div>
+                        {mismatches.length > 0 && (
+                          <div className="mt-1 text-amber-200/90">
+                            {mismatches.map(s => {
+                              const rec = recommendationFor(s.constant, planBalance, s.enabled);
+                              const p = STRATEGY_PLAN[s.constant];
+                              return rec === 'on'
+                                ? `Enable ${p.alias}. `
+                                : `Disable ${p.alias} (plan: on at $${p.on.toLocaleString()}). `;
+                            })}
+                          </div>
+                        )}
+                        <div className="mt-0.5 text-[10px] text-gray-500">Advisory only — toggles are manual; nothing here changes what runs.</div>
+                      </div>
+                    );
+                  })()}
                   {strategies.map(s => (
                     <div key={`${s.product}-${s.name}`} className="bg-gray-800/50 rounded p-2">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <span className="text-white text-sm font-medium">{s.name}</span>
                           <span className="text-xs text-gray-400">{s.product}</span>
+                          {planBalance != null && (() => {
+                            const rec = recommendationFor(s.constant, planBalance, s.enabled);
+                            if (!rec) return null;
+                            const p = STRATEGY_PLAN[s.constant];
+                            const match = (rec === 'on') === !!s.enabled;
+                            if (match) {
+                              return (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-700/40 text-gray-400 border border-gray-600/40"
+                                  title={p.note}>
+                                  plan: {rec}{rec === 'off' && p.on > 0 ? ` <$${(p.on/1000)}k` : ''}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/50 text-amber-300 border border-amber-600/50 font-medium"
+                                title={p.note}>
+                                ⚠ plan: {rec === 'on' ? 'enable' : `disable (on at $${(p.on/1000)}k)`}
+                              </span>
+                            );
+                          })()}
                           {s.position?.in_position && (
                             <span className="px-1.5 py-0.5 rounded text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50">
                               IN POSITION
