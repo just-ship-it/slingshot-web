@@ -52,6 +52,24 @@ const stopManagementInfo = (sig, direction) => {
   return (out.be || out.trail || out.lsBe) ? out : null;
 };
 
+// "Expires HH:MM ET (...)" — when the trade is force-closed if it never hits
+// stop/target. Backend (orchestrator) computes the binding time from the
+// per-signal max-hold and the EOD flatten cutoff; we just format it to ET.
+const expiryLabel = (sig) => {
+  if (!sig?.expiresAt) return null;
+  const d = new Date(sig.expiresAt);
+  if (isNaN(d.getTime())) return null;
+  const t = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
+  if (sig.expiryReason === 'eod') return `Expires ${t} ET (EOD flatten)`;
+  if (sig.expiryReason === 'max_hold') {
+    const mh = Number(sig.maxHoldBars);
+    return `Expires ${t} ET (max hold${Number.isFinite(mh) ? ` ${mh}m` : ''})`;
+  }
+  return `Expires ${t} ET`;
+};
+
 const ResendButton = ({ signal, accounts }) => {
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -275,6 +293,9 @@ const AlertPanel = ({ socket, accounts }) => {
                       )}
                       <ResendButton signal={sig} accounts={accounts} />
                       {alert.severity === 'rejected' && <div className="text-xs text-red-400 mt-0.5">{alert.message}</div>}
+                      {expiryLabel(sig) && (
+                        <div className="mt-0.5 text-[10px] font-mono text-gray-400">{expiryLabel(sig)}</div>
+                      )}
                       {(() => {
                         const sm = stopManagementInfo(sig, direction);
                         if (!sm) return null;
