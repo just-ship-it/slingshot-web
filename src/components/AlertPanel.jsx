@@ -4,6 +4,54 @@ import { api } from '../services/api';
 
 const MAX_ALERTS = 50;
 
+// Derive where a breakeven / trailing stop engages and where the stop moves to,
+// from the signal's entry price + direction + the raw point distances the engine
+// carries (breakevenTrigger/Offset, trailingTrigger/Offset). Purely informational.
+// For a LONG, "favorable" is up; for a SHORT, "favorable" is down.
+const stopManagementInfo = (sig, direction) => {
+  const entry = sig?.price;
+  if (entry == null || (direction !== 'LONG' && direction !== 'SHORT')) return null;
+  const sign = direction === 'LONG' ? 1 : -1;
+  const fmt = (n) => Number(n).toFixed(2);
+  const out = {};
+
+  // Breakeven: one-time jump once MFE >= trigger. Stop moves to entry ± offset.
+  const beTrig = sig.breakevenTrigger;
+  if ((sig.breakevenStop || beTrig) && Number(beTrig) > 0) {
+    const off = Number(sig.breakevenOffset) || 0;
+    const newStop = entry + sign * off; // +off locks `off` pts of profit
+    const lock = off > 0 ? `lock +${off}pt` : off < 0 ? `allow ${off}pt` : 'breakeven';
+    out.be = {
+      engage: fmt(entry + sign * beTrig),
+      trigger: beTrig,
+      newStop: fmt(newStop),
+      lock,
+    };
+  }
+
+  // Trailing: ratchets `offset` pts behind the running extreme once MFE >= trigger.
+  const trTrig = sig.trailingTrigger;
+  const trOff = sig.trailingOffset;
+  if (Number(trTrig) > 0 && Number(trOff) > 0) {
+    out.trail = {
+      engage: fmt(entry + sign * trTrig),
+      trigger: trTrig,
+      offset: trOff,
+    };
+  }
+
+  // LS-BE-on-flip overlay (orchestrator arms BE on first adverse 1m LS flip).
+  if (sig.lsBeOnFlip) {
+    const off = Number(sig.lsBeOffset) || 0;
+    out.lsBe = {
+      newStop: fmt(entry + sign * off),
+      lock: off > 0 ? `lock +${off}pt` : off < 0 ? `allow ${off}pt` : 'breakeven',
+    };
+  }
+
+  return (out.be || out.trail || out.lsBe) ? out : null;
+};
+
 const ResendButton = ({ signal, accounts }) => {
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -227,6 +275,29 @@ const AlertPanel = ({ socket, accounts }) => {
                       )}
                       <ResendButton signal={sig} accounts={accounts} />
                       {alert.severity === 'rejected' && <div className="text-xs text-red-400 mt-0.5">{alert.message}</div>}
+                      {(() => {
+                        const sm = stopManagementInfo(sig, direction);
+                        if (!sm) return null;
+                        return (
+                          <div className="mt-0.5 text-[10px] font-mono text-amber-300/80 leading-snug">
+                            {sm.be && (
+                              <div>
+                                BE @ {sm.be.engage} (+{sm.be.trigger}pt) → SL {sm.be.newStop} ({sm.be.lock})
+                              </div>
+                            )}
+                            {sm.trail && (
+                              <div>
+                                Trail @ {sm.trail.engage} (+{sm.trail.trigger}pt), {sm.trail.offset}pt behind
+                              </div>
+                            )}
+                            {sm.lsBe && (
+                              <div className="text-cyan-300/80">
+                                LS-flip BE → SL {sm.lsBe.newStop} ({sm.lsBe.lock})
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <p className="text-sm text-gray-200 mt-1 leading-snug">{alert.message}</p>
