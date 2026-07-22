@@ -124,46 +124,40 @@ const StrategyRow = ({ s, liveSecs }) => {
   return (
     <div className="relative overflow-hidden bg-gray-900/40 border border-gray-700/70 rounded-lg">
       <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${st.stripe}`} />
-      <div className="grid grid-cols-1 sm:grid-cols-[minmax(150px,1.1fr)_minmax(120px,0.9fr)_minmax(150px,1.2fr)_auto] gap-3 items-center px-3 py-2.5 pl-4">
-        {/* identity + state */}
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,1.3fr)] gap-3 items-center px-3 py-2.5 pl-4">
+        {/* identity + state + direction */}
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[14px] font-bold text-white truncate">{s.name}</span>
-            <span className="text-[10px] font-mono text-gray-400 bg-gray-700/60 border border-gray-600/50 px-1.5 rounded">NQ · {s.trading_symbol || 'NQ'}</span>
+            <span className="text-[10px] font-mono text-gray-400 bg-gray-700/60 border border-gray-600/50 px-1.5 rounded shrink-0">{s.trading_symbol || 'NQ'}</span>
           </div>
-          <span className={`inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded border text-[10px] font-bold tracking-wider ${st.badge}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${st.lamp} ${it.state === 'armed' ? 'animate-pulse' : ''}`} />
-            {st.label}
-          </span>
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] font-bold tracking-wider ${st.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${st.lamp} ${it.state === 'armed' ? 'animate-pulse' : ''}`} />
+              {st.label}
+            </span>
+            <DirChip dir={it.direction} />
+          </div>
         </div>
 
         {/* decision countdown */}
-        <div>
+        <div className="min-w-0">
           <div className="text-gray-500 text-[10px] uppercase tracking-wide">Decision</div>
           <div className="text-[11px] font-mono text-gray-400">{it.decision?.label || '—'}</div>
-          <div className={`font-mono tabular-nums font-semibold ${st.text} ${multi ? 'text-[16px]' : 'text-[20px]'} leading-tight`}>
+          <div className={`font-mono tabular-nums font-semibold ${st.text} ${multi ? 'text-[15px]' : 'text-[19px]'} leading-tight`}>
             {it.state === 'fired' ? '✓ sent' : fmtCountdown(secs)}
           </div>
         </div>
 
         {/* condition */}
         <div className="min-w-0">{condBody}</div>
-
-        {/* direction + last signal */}
-        <div className="flex flex-col items-start sm:items-end gap-1.5">
-          <DirChip dir={it.direction} />
-          {it.lastSignal && it.state !== 'fired' && (
-            <span className="text-[10px] font-mono text-gray-500">
-              last {it.lastSignal.side === 'buy' ? 'L' : 'S'} @ {it.lastSignal.price} · {minsAgo(it.lastSignal.ts)}
-            </span>
-          )}
-        </div>
       </div>
 
       {/* meta footer */}
       <div className="px-3 pl-4 pb-1.5 -mt-0.5 text-[10px] text-gray-500 flex gap-3 flex-wrap">
         <span className={it.seeded ? 'text-green-500/80' : 'text-yellow-500'}>{it.seeded ? '✓ seeded' : '○ warming up'}</span>
         {it.atr14 ? <span>ATR14 <span className="font-mono text-gray-400">{it.atr14}</span></span> : null}
+        {it.lastSignal && it.state !== 'fired' ? <span>last {it.lastSignal.side === 'buy' ? 'LONG' : 'SHORT'} @ <span className="font-mono text-gray-400">{it.lastSignal.price}</span> · {minsAgo(it.lastSignal.ts)}</span> : null}
         {!s.enabled ? <span className="text-gray-600">disabled in config</span> : null}
         {it.state === 'fired' ? <span className="text-green-500/80">◆ signal captured — trading disabled, no order</span> : null}
       </div>
