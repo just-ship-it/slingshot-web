@@ -529,6 +529,17 @@ export const api = {
     }
   },
 
+  // Greenfield book readiness (pre-close / Monday / gap-fade) — one call for the
+  // "book at a glance" panel; each strategy carries its getInternalState internals.
+  async getBookReadiness() {
+    try {
+      return await apiClient.get('/api/book/readiness');
+    } catch (error) {
+      console.log('Book readiness not available:', error.message);
+      return null;
+    }
+  },
+
   // List all strategies from multi-strategy engine
   async getStrategiesList() {
     try {

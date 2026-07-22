@@ -8,6 +8,7 @@ import GexFlipIvpctPanel from './GexFlipIvpctPanel';
 import GexLt3mCrossoverPanel from './GexLt3mCrossoverPanel';
 import GexLevelFadePanel from './GexLevelFadePanel';
 import LsFlipTriggerBarPanel from './LsFlipTriggerBarPanel';
+import BookReadinessPanel from './BookReadinessPanel';
 import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
@@ -438,6 +439,11 @@ const Dashboard = ({
       <div className="dashboard-split">
       {/* Column 1 (1/5): strategy panels */}
       <div className="dashboard-left">
+        {(isStrategyEnabled('preclose-continuation') || isStrategyEnabled('monday-strength') || isStrategyEnabled('gapup-fade')) && (
+          <div className="panel-book-readiness">
+            <BookReadinessPanel socket={socket} quotes={quotes} />
+          </div>
+        )}
         {isStrategyEnabled('gex-flip-ivpct') && (
           <div className="panel-gex-flip-ivpct">
             <GexFlipIvpctPanel socket={socket} quotes={quotes} />
