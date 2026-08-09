@@ -199,7 +199,6 @@ const StrategyRow = ({ s, liveSecs }) => {
         {it.atr14 ? <span>ATR14 <span className="font-mono text-gray-400">{it.atr14}</span></span> : null}
         {it.lastSignal && it.state !== 'fired' ? <span>last {it.lastSignal.side === 'buy' ? 'LONG' : 'SHORT'} @ <span className="font-mono text-gray-400">{it.lastSignal.price}</span> · {minsAgo(it.lastSignal.ts)}</span> : null}
         {!s.enabled ? <span className="text-gray-600">disabled in config</span> : null}
-        {it.state === 'fired' ? <span className="text-green-500/80">◆ signal captured — trading disabled, no order</span> : null}
       </div>
     </div>
   );
@@ -255,10 +254,6 @@ const BookReadinessPanel = ({ socket, quotes }) => {
           <span className="inline-flex items-center gap-1 text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-yellow-400" /><span className="font-mono text-gray-300">{watching}</span> watching</span>
           <span className="inline-flex items-center gap-1 text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-500" /><span className="font-mono text-gray-300">{idle}</span> idle</span>
         </div>
-      </div>
-
-      <div className="text-[10px] text-yellow-400/90 bg-yellow-900/20 border border-yellow-700/30 rounded px-2 py-1 mb-2">
-        Signals only — trading disabled. Strategies are evaluating; no orders reach the broker.
       </div>
 
       {loading && !data ? (
