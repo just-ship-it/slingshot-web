@@ -68,6 +68,39 @@ const DirChip = ({ dir }) => {
   );
 };
 
+/**
+ * PCC breadth/stress conditioner strip (sizingMode != 'off').
+ * Shows the two live inputs (TRIN ≤14:30 ET, COR1M Δ5d) and the tier the
+ * ladder would assign if the strategy fired in the CURRENT day-move direction
+ * — the verification surface for the live fetch (values appear ~14:40 ET).
+ */
+const ConditionerStrip = ({ cond, direction }) => {
+  if (!cond) return null;
+  const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const fresh = cond.date === todayET && (cond.trin != null || cond.cor != null);
+  const trinBull = cond.trin != null ? cond.trin < 1.0 : null;
+  const stress = cond.cor != null ? cond.cor > 2.27 : null;
+  const trinAligned = trinBull != null && direction ? (trinBull === (direction === 'LONG')) : null;
+  const tier = fresh && direction ? (trinAligned ? 1 : 0) + (stress ? 1 : 0) : null;
+  const tierCopy = tier == null ? null : tier === 0 ? 'no trade' : `${tier} lot${tier > 1 ? 's' : ''}`;
+  const tierColor = tier == null ? 'text-gray-500' : tier === 2 ? 'text-green-300' : tier === 1 ? 'text-gray-200' : 'text-rose-300';
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-[10px] text-gray-500">
+      <span className="uppercase tracking-wide text-gray-500">Conditioner</span>
+      <span className="text-[9px] font-mono text-gray-400 bg-gray-700/60 border border-gray-600/50 px-1 rounded">{cond.mode}</span>
+      {fresh ? (
+        <>
+          <span>TRIN <span className={`font-mono ${trinBull ? 'text-green-400' : 'text-rose-400'}`}>{cond.trin != null ? cond.trin.toFixed(2) : '—'}</span>{trinBull != null ? <span className="text-gray-600"> {trinBull ? 'bull' : 'bear'}</span> : null}</span>
+          <span>CORΔ5d <span className={`font-mono ${stress ? 'text-amber-300' : 'text-gray-400'}`}>{cond.cor != null ? (cond.cor > 0 ? '+' : '') + cond.cor.toFixed(2) : '—'}</span>{stress != null ? <span className="text-gray-600"> {stress ? 'stress' : 'calm'}</span> : null}</span>
+          {tierCopy ? <span>→ <span className={`font-semibold ${tierColor}`}>tier {tier} · {tierCopy}</span> <span className="text-gray-600">if fired {direction}</span></span> : null}
+        </>
+      ) : (
+        <span className="text-gray-600">awaiting 14:40 ET fetch{cond.date && cond.date !== todayET ? ` (last: ${cond.date})` : ''} · fails open to 1 lot</span>
+      )}
+    </div>
+  );
+};
+
 const StrategyRow = ({ s, liveSecs }) => {
   const it = s.internals || {};
   const st = STATE[it.state] || STATE.dormant;
@@ -152,6 +185,13 @@ const StrategyRow = ({ s, liveSecs }) => {
         {/* condition */}
         <div className="min-w-0">{condBody}</div>
       </div>
+
+      {/* PCC breadth/stress conditioner (verification surface for live fetch) */}
+      {it.conditioner ? (
+        <div className="px-3 pl-4 pb-1">
+          <ConditionerStrip cond={it.conditioner} direction={it.direction} />
+        </div>
+      ) : null}
 
       {/* meta footer */}
       <div className="px-3 pl-4 pb-1.5 -mt-0.5 text-[10px] text-gray-500 flex gap-3 flex-wrap">
