@@ -909,8 +909,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                     </div>
                   )}
 
-                  )}
-
                   <div className="text-xs text-gray-500 text-right">
                     Updated: {signalGeneratorConnections.timestamp ? formatAge(signalGeneratorConnections.timestamp) : 'Never'}
                   </div>
