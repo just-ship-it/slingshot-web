@@ -61,11 +61,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
   const [sessionSubmitting, setSessionSubmitting] = useState(false);
   const [sessionMessage, setSessionMessage] = useState(null);
 
-  // Schwab token
-  const [showSchwabTokenForm, setShowSchwabTokenForm] = useState(false);
-  const [schwabTokenInput, setSchwabTokenInput] = useState('');
-  const [schwabTokenSubmitting, setSchwabTokenSubmitting] = useState(false);
-  const [schwabTokenMessage, setSchwabTokenMessage] = useState(null);
 
   // Sync
   const [isFullSyncing, setIsFullSyncing] = useState(false);
@@ -282,24 +277,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
     }
   };
 
-  const handleSchwabTokenSubmit = async (e) => {
-    e.preventDefault();
-    if (!schwabTokenInput.trim()) return;
-    setSchwabTokenSubmitting(true);
-    setSchwabTokenMessage(null);
-    try {
-      const result = await api.setSchwabToken(schwabTokenInput.trim());
-      setSchwabTokenMessage({ type: 'success', text: result.message || 'Token updated' });
-      setSchwabTokenInput('');
-      setShowSchwabTokenForm(false);
-      setTimeout(fetchSignalGeneratorConnections, 3000);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to set token';
-      setSchwabTokenMessage({ type: 'error', text: msg });
-    } finally {
-      setSchwabTokenSubmitting(false);
-    }
-  };
 
   // --- On mount ---
   useEffect(() => {
@@ -790,9 +767,8 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                 </div>
               </div>
 
-              {/* Connection Badges. Note: there is no separate "TV" badge — since the
-                  2026-05-22 Schwab migration the only live TradingView connection is the
-                  LT Monitor (LT/LS Pine studies); quotes/candles come from Schwab. */}
+              {/* Connection Badges. TradingView health is shown in the expanded
+                  details below (it carries quotes/candles as of 2026-08-20). */}
               {signalGeneratorConnections?.connections && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {!signalGeneratorConnections.connections.ltMonitor?.notRequired && (
@@ -804,35 +780,15 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                       {signalGeneratorConnections.connections.ltMonitor?.connected ? '✓' : '✗'} LT
                     </span>
                   )}
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected'
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed'
-                      ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? '✓' :
-                     signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? '⏸' : '✗'} Schwab
-                  </span>
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    signalGeneratorConnections.connections.cboe?.hasData
-                      ? 'bg-green-900/50 text-green-300 border border-green-700/50'
-                      : 'bg-red-900/50 text-red-300 border border-red-700/50'
-                  }`}>
-                    {signalGeneratorConnections.connections.cboe?.hasData ? '✓' : '✗'} CBOE
-                  </span>
                 </div>
               )}
 
               {/* Expanded Connection Details */}
               {sgConnectionsExpanded && signalGeneratorConnections?.connections && (
                 <div className="mt-3 pt-3 border-t border-gray-600 space-y-2">
-                  {/* TradingView Session — token/auto-refresh only. Since the 2026-05-22
-                      Schwab migration, the TradingViewClient WS is no longer opened
-                      (quotes/candles come from Schwab); the only live TradingView
-                      connection is the LT Monitor below. So we no longer show the old
-                      (always-disconnected) "TV connector" status — just the JWT health
-                      and the token/session bootstrap controls. */}
+                  {/* TradingView Session — JWT health plus the token/session
+                      bootstrap controls. As of 2026-08-20 TradingView is the
+                      primary quote/candle feed again (Schwab retired). */}
                   <div className="bg-gray-800/50 rounded p-2">
                     <div className="flex justify-between items-center">
                       <span className="text-white text-sm font-medium">TradingView Session</span>
@@ -953,108 +909,6 @@ const PlatformStatus = ({ socket, tradovateStatus }) => {
                     </div>
                   )}
 
-                  {/* Schwab */}
-                  <div className="bg-gray-800/50 rounded p-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">Schwab Options</span>
-                      <span className={`text-xs ${
-                        signalGeneratorConnections.connections.tradier?.websocketStatus === 'connected' ? 'text-green-400' :
-                        signalGeneratorConnections.connections.tradier?.websocketStatus === 'market_closed' ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {signalGeneratorConnections.connections.tradier?.displayStatus || 'Unknown'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Available:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.available ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Running:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.running ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Has Token:</span> <span className="text-white">{signalGeneratorConnections.connections.tradier?.hasToken ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Last Calc:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.tradier?.lastCalculation)}</span></div>
-                    </div>
-                    {/* Schwab OAuth */}
-                    <div className="mt-2">
-                      {!showSchwabTokenForm ? (
-                        <button
-                          onClick={() => { setShowSchwabTokenForm(true); setSchwabTokenMessage(null); }}
-                          className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                        >
-                          Re-authenticate
-                        </button>
-                      ) : (
-                        <form onSubmit={handleSchwabTokenSubmit} className="space-y-2">
-                          <div className="text-xs text-gray-400">
-                            1. <a
-                              href="https://api.schwabapi.com/v1/oauth/authorize?client_id=buA1SLS7GCPwg67M9ZjsKyRvbIUZpyBLcTOWYFhJBluwq4tk&redirect_uri=https://127.0.0.1:8182"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 underline"
-                            >Open Schwab login</a> and authorize
-                            <br />2. Copy the redirect URL from the address bar
-                            <br />3. Paste it below
-                          </div>
-                          <textarea
-                            value={schwabTokenInput}
-                            onChange={(e) => setSchwabTokenInput(e.target.value)}
-                            placeholder="Paste redirect URL (https://127.0.0.1:8182?code=...)"
-                            className="w-full bg-gray-900 text-white text-xs font-mono p-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
-                            rows={3}
-                            autoFocus
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              type="submit"
-                              disabled={schwabTokenSubmitting || !schwabTokenInput.trim()}
-                              className="text-xs px-3 py-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
-                            >
-                              {schwabTokenSubmitting ? 'Authenticating...' : 'Submit'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setShowSchwabTokenForm(false); setSchwabTokenInput(''); setSchwabTokenMessage(null); }}
-                              className="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                      {schwabTokenMessage && (
-                        <div className={`mt-1 text-xs ${schwabTokenMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                          {schwabTokenMessage.text}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* CBOE */}
-                  <div className="bg-gray-800/50 rounded p-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white text-sm font-medium">CBOE API</span>
-                      <span className={`text-xs ${signalGeneratorConnections.connections.cboe?.hasData ? 'text-green-400' : 'text-red-400'}`}>
-                        {signalGeneratorConnections.connections.cboe?.hasData ? 'Has Data' : 'No Data'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                      <div><span className="text-gray-400">Enabled:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.enabled ? 'Yes' : 'No'}</span></div>
-                      <div><span className="text-gray-400">Data Age:</span> <span className="text-white">{signalGeneratorConnections.connections.cboe?.ageMinutes != null ? `${signalGeneratorConnections.connections.cboe.ageMinutes} min` : 'N/A'}</span></div>
-                      <div><span className="text-gray-400">Last Fetch:</span> <span className="text-white">{formatAge(signalGeneratorConnections.connections.cboe?.lastFetch)}</span></div>
-                    </div>
-                  </div>
-
-                  {/* Hybrid GEX */}
-                  {signalGeneratorConnections.connections.hybridGex && (
-                    <div className="bg-gray-800/50 rounded p-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-white text-sm font-medium">Hybrid GEX</span>
-                        <span className={`text-xs ${signalGeneratorConnections.connections.hybridGex?.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                          {signalGeneratorConnections.connections.hybridGex?.enabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 text-xs">
-                        <div><span className="text-gray-400">Primary:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.primarySource || 'N/A'}</span></div>
-                        <div><span className="text-gray-400">RTH Cache:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.usingRTHCache ? 'Yes' : 'No'}</span></div>
-                        <div><span className="text-gray-400">Schwab Fresh:</span> <span className="text-white">{signalGeneratorConnections.connections.hybridGex?.tradierFresh ? 'Yes' : 'No'}</span></div>
-                      </div>
-                    </div>
                   )}
 
                   <div className="text-xs text-gray-500 text-right">

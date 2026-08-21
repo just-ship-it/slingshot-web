@@ -151,7 +151,6 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     }
   }, [gexData, isNQ]);
 
-  const loading = isNQ ? !gexData?.tradier : (!gexData?.tradier && !gexData?.cboe);
   const error = null;
 
   const strategyDisplay = useMemo(() => {
@@ -503,9 +502,10 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     });
   }, [ltLevels, chartReady]);
 
+  // [2026-08-20] GEX retired. The chart must never be covered by a full-bleed
+  // overlay waiting on levels that will never arrive — only a missing price
+  // feed justifies hiding the candles.
   const getStatusMessage = () => {
-    if (loading && !gexLevels) return 'Loading GEX levels...';
-    if (error && !gexLevels) return error;
     if (!quote?.close) return `Waiting for ${productLabel} price data...`;
     return null;
   };

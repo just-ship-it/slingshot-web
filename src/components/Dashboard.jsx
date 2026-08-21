@@ -9,7 +9,6 @@ import GexLt3mCrossoverPanel from './GexLt3mCrossoverPanel';
 import GexLevelFadePanel from './GexLevelFadePanel';
 import LsFlipTriggerBarPanel from './LsFlipTriggerBarPanel';
 import BookReadinessPanel from './BookReadinessPanel';
-import TabbedGexPanel from './TabbedGexPanel';
 import MultiAccountPanel from './MultiAccountPanel';
 import AITraderPanel from './AITraderPanel';
 import AlertPanel from './AlertPanel';
@@ -486,18 +485,8 @@ const Dashboard = ({
         )}
       </div>
 
-      {/* Column 2 (1/5): GEX levels, accounts, alerts */}
+      {/* Column 2 (1/5): accounts, alerts (GEX panel removed 2026-08-20) */}
       <div className="dashboard-mid">
-        <div className="panel-gex">
-          {/* [2026-05-20] ES props passed as null/no-op — TabbedGexPanel now
-              renders NQ only (ES tab commented out). */}
-          <TabbedGexPanel
-            nqGexData={gexData}
-            esGexData={null}
-            onRefreshNq={fetchGexData}
-            onRefreshEs={() => {}}
-          />
-        </div>
         {multiAccountData && (
           <MultiAccountPanel
             accounts={multiAccountData.accounts}

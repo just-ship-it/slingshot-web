@@ -170,17 +170,6 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
           connected={status?.connections?.ltMonitor?.connected}
           detail={status?.connections?.ltMonitor?.hasLevels ? 'Has Levels' : 'No Levels'}
         />
-        <ConnectionBadge
-          label="Schwab"
-          connected={status?.connections?.tradier?.websocketStatus === 'connected'}
-          marketClosed={status?.connections?.tradier?.websocketStatus === 'market_closed'}
-          detail={status?.connections?.tradier?.displayStatus || 'Unknown'}
-        />
-        <ConnectionBadge
-          label="CBOE"
-          connected={status?.connections?.cboe?.hasData}
-          detail={status?.connections?.cboe?.ageMinutes != null ? `${status.connections.cboe.ageMinutes}m old` : 'N/A'}
-        />
       </div>
 
       {/* Expanded Details */}
@@ -254,46 +243,6 @@ const SignalGeneratorStatus = ({ socket, refreshInterval = 30000 }) => {
             ]}
           />
 
-          {/* Schwab Details */}
-          <ConnectionDetailRow
-            icon="SC"
-            label="Schwab Options"
-            status={status?.connections?.tradier?.websocketStatus === 'connected'}
-            statusLabel={status?.connections?.tradier?.displayStatus}
-            marketClosed={status?.connections?.tradier?.websocketStatus === 'market_closed'}
-            details={[
-              { label: 'Available', value: status?.connections?.tradier?.available ? 'Yes' : 'No' },
-              { label: 'Running', value: status?.connections?.tradier?.running ? 'Yes' : 'No' },
-              { label: 'Has Token', value: status?.connections?.tradier?.hasToken ? 'Yes' : 'No' },
-              { label: 'Last Calc', value: formatAge(status?.connections?.tradier?.lastCalculation) }
-            ]}
-          />
-
-          {/* CBOE Details */}
-          <ConnectionDetailRow
-            icon="CB"
-            label="CBOE API"
-            status={status?.connections?.cboe?.hasData}
-            details={[
-              { label: 'Enabled', value: status?.connections?.cboe?.enabled ? 'Yes' : 'No' },
-              { label: 'Has Data', value: status?.connections?.cboe?.hasData ? 'Yes' : 'No' },
-              { label: 'Data Age', value: status?.connections?.cboe?.ageMinutes != null ? `${status.connections.cboe.ageMinutes} min` : 'N/A' },
-              { label: 'Last Fetch', value: formatAge(status?.connections?.cboe?.lastFetch) }
-            ]}
-          />
-
-          {/* Hybrid GEX Details */}
-          <ConnectionDetailRow
-            icon="HY"
-            label="Hybrid GEX Calculator"
-            status={status?.connections?.hybridGex?.enabled}
-            details={[
-              { label: 'Enabled', value: status?.connections?.hybridGex?.enabled ? 'Yes' : 'No' },
-              { label: 'Primary Source', value: status?.connections?.hybridGex?.primarySource || 'N/A' },
-              { label: 'RTH Cache', value: status?.connections?.hybridGex?.usingRTHCache ? 'Yes' : 'No' },
-              { label: 'Schwab Fresh', value: status?.connections?.hybridGex?.tradierFresh ? 'Yes' : 'No' }
-            ]}
-          />
         </div>
       )}
 
