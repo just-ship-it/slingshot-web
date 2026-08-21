@@ -372,7 +372,22 @@ const GexChart = ({ quote, gexData, strategyStatus, product = 'nq', getCandlesFn
     // unchanged because the prior version was working except for this dup.
     const hasCandelOHLCV = !!quote.candleTimestamp;
     const tickTsSec = quote.timestamp ? new Date(quote.timestamp).getTime() / 1000 : Math.floor(Date.now() / 1000);
-    const ohlcvTsSec = hasCandelOHLCV ? new Date(quote.candleTimestamp).getTime() / 1000 : tickTsSec;
+    // [2026-08-21] candleTimestamp is a Unix SECONDS number (both the TradingView
+    // client and the LT-monitor feed take it straight from the bar's v[0]). Passing
+    // a number to new Date() treats it as MILLISECONDS, so 1787287200 became Jan
+    // 1970 and candleTime never matched the live bar.
+    //
+    // This stayed hidden while Schwab was the feed: its 1Hz L1 ticks carried no
+    // candleTimestamp and drove the working branch above, so only the 1/min bars
+    // took this path. TradingView's du stream sets candleTimestamp on EVERY update,
+    // so the broken branch became the common case and the forming candle stopped
+    // building in real time. Accept seconds, milliseconds, or an ISO string.
+    const toSeconds = (v) => {
+      if (typeof v === 'number') return v > 1e11 ? v / 1000 : v;   // ms vs s
+      const parsed = new Date(v).getTime();
+      return Number.isFinite(parsed) ? parsed / 1000 : tickTsSec;
+    };
+    const ohlcvTsSec = hasCandelOHLCV ? toSeconds(quote.candleTimestamp) : tickTsSec;
     const candleTime = Math.floor(ohlcvTsSec / 60) * 60;
     const candle = {
       time: candleTime,
