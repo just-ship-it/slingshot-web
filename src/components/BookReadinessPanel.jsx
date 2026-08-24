@@ -103,7 +103,14 @@ const ConditionerStrip = ({ cond, direction }) => {
 
 const GexDeadbandStrip = ({ gex }) => {
   if (!gex) return null;
-  const b = (v) => (v == null ? '—' : `${(v / 1e9).toFixed(2)}B`);
+  // gex-calculator publishes total_gex ALREADY in billions (gex-calculator.js:340
+  // `totalGex: totalGex / 1e9`), while the backtest JSONs carry raw values. Auto-scale
+  // so the panel is correct against either.
+  const b = (v) => {
+    if (v == null || !Number.isFinite(v)) return '—';
+    const bn = Math.abs(v) > 1e6 ? v / 1e9 : v;
+    return `${bn.toFixed(2)}B`;
+  };
   const inDb = gex.inDeadband === true;
   const known = gex.totalGex != null;
   return (
@@ -126,7 +133,14 @@ const GexDeadbandStrip = ({ gex }) => {
           {inDb ? 'IN DEADBAND · SKIP' : 'CLEAR'}
         </span>
       ) : null}
-      <span className="text-gray-600 ml-auto">{gex.sessions ?? 0} sess</span>
+      <span className="ml-auto flex items-center gap-1.5">
+        {gex.poolOpen === false && (gex.sessions ?? 0) < (gex.needed ?? 20) ? (
+          <span className="text-gray-500">pool opens {gex.poolOpensAt || '13:00 ET'}</span>
+        ) : null}
+        <span className={(gex.sessions ?? 0) >= (gex.needed ?? 20) ? 'text-green-500/80' : 'text-yellow-500/90'}>
+          {gex.sessions ?? 0}/{gex.needed ?? 20} samples
+        </span>
+      </span>
     </div>
   );
 };
@@ -232,7 +246,9 @@ const StrategyRow = ({ s, liveSecs }) => {
 
       {/* meta footer */}
       <div className="px-3 pl-4 pb-1.5 -mt-0.5 text-[10px] text-gray-500 flex gap-3 flex-wrap">
-        <span className={it.seeded ? 'text-green-500/80' : 'text-yellow-500'}>{it.seeded ? '✓ seeded' : '○ warming up'}</span>
+        <span className={it.seeded ? 'text-green-500/80' : 'text-yellow-500'}>
+          {it.seeded ? '✓ seeded' : (it.warmup?.blocked ? `○ warming up — ${it.warmup.blocked}` : '○ warming up')}
+        </span>
         {it.atr14 ? <span>ATR14 <span className="font-mono text-gray-400">{it.atr14}</span></span> : null}
         {it.lastSignal && it.state !== 'fired' ? <span>last {it.lastSignal.side === 'buy' ? 'LONG' : 'SHORT'} @ <span className="font-mono text-gray-400">{it.lastSignal.price}</span> · {minsAgo(it.lastSignal.ts)}</span> : null}
         {!s.enabled ? <span className="text-gray-600">disabled in config</span> : null}
