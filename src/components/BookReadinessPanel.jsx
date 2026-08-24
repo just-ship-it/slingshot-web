@@ -101,6 +101,36 @@ const ConditionerStrip = ({ cond, direction }) => {
   );
 };
 
+const GexDeadbandStrip = ({ gex }) => {
+  if (!gex) return null;
+  const b = (v) => (v == null ? '—' : `${(v / 1e9).toFixed(2)}B`);
+  const inDb = gex.inDeadband === true;
+  const known = gex.totalGex != null;
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-[10px] bg-gray-800/40 border border-gray-700/50 rounded px-2 py-1">
+      <span className="text-gray-500 uppercase tracking-wide">Gamma</span>
+      {known ? (
+        <span className={`font-mono font-semibold ${gex.totalGex > 0 ? 'text-sky-300' : 'text-orange-300'}`}>
+          {gex.totalGex > 0 ? '+' : ''}{b(gex.totalGex)}
+        </span>
+      ) : <span className="text-gray-500 font-mono">pending 15:30</span>}
+      {known ? (
+        <span className="text-gray-400">{gex.regime}</span>
+      ) : null}
+      <span className="text-gray-600">·</span>
+      <span className="text-gray-500">deadband <span className="font-mono text-gray-400">{b(gex.deadband)}</span></span>
+      {known ? (
+        <span className={`px-1.5 rounded border font-bold tracking-wide ${inDb
+          ? 'bg-gray-700/70 text-gray-300 border-gray-600/50'
+          : 'bg-green-900/50 text-green-300 border-green-600/50'}`}>
+          {inDb ? 'IN DEADBAND · SKIP' : 'CLEAR'}
+        </span>
+      ) : null}
+      <span className="text-gray-600 ml-auto">{gex.sessions ?? 0} sess</span>
+    </div>
+  );
+};
+
 const StrategyRow = ({ s, liveSecs }) => {
   const it = s.internals || {};
   const st = STATE[it.state] || STATE.dormant;
@@ -135,8 +165,8 @@ const StrategyRow = ({ s, liveSecs }) => {
           {known ? (
             <>
               <span className="font-mono font-semibold text-white">{cond.valuePts > 0 ? '+' : ''}{cond.valuePts} pts</span>
-              <span className="text-gray-400 font-mono text-[12px]"> ({cond.value > 0 ? '+' : ''}{cond.value} ATR)</span>
-              <span className="text-gray-500 text-[11px]"> · need {cond.threshold} ATR</span>
+              <span className="text-gray-400 font-mono text-[12px]"> ({cond.value > 0 ? '+' : ''}{cond.value} {cond.unit || 'ATR'})</span>
+              <span className="text-gray-500 text-[11px]"> · need {cond.threshold} {cond.unit || 'ATR'}</span>
             </>
           ) : (
             <span className="text-gray-400 text-[12px]">
@@ -190,6 +220,13 @@ const StrategyRow = ({ s, liveSecs }) => {
       {it.conditioner ? (
         <div className="px-3 pl-4 pb-1">
           <ConditionerStrip cond={it.conditioner} direction={it.direction} />
+        </div>
+      ) : null}
+
+      {/* LETF gamma deadband — the gate that makes the sleeve source-independent */}
+      {it.gex ? (
+        <div className="px-3 pl-4 pb-1">
+          <GexDeadbandStrip gex={it.gex} />
         </div>
       ) : null}
 
