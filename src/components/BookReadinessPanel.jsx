@@ -35,6 +35,14 @@ const fmtCountdown = (s) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 };
 
+const DAY_MS = 86400000;
+const parseKey = (k) => { const [y, m, d] = String(k).split('-').map(Number); return new Date(y, m - 1, d); };
+const fmtRefDate = (k) => parseKey(k).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const daysOldET = (k) => {
+  const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  return Math.round((parseKey(todayET) - parseKey(k)) / DAY_MS);
+};
+
 const minsAgo = (ms) => {
   if (!ms) return '';
   const d = Math.floor((Date.now() - ms) / 60000);
@@ -97,6 +105,49 @@ const ConditionerStrip = ({ cond, direction }) => {
       ) : (
         <span className="text-gray-600">awaiting 14:40 ET fetch{cond.date && cond.date !== todayET ? ` (last: ${cond.date})` : ''} · fails open to 1 lot</span>
       )}
+    </div>
+  );
+};
+
+/**
+ * Prior-session reference strip (gap-up fade).
+ *
+ * The opening gap is measured ENTIRELY against this one number, so a stale
+ * reference does not degrade the signal — it manufactures a phantom gap out of
+ * several sessions of drift. On 2026-08-28 a reference frozen 4 sessions back
+ * turned a −64pt gap DOWN into a +529pt "gap up" and fired a live short, and
+ * nothing on this panel showed it: the card read "need >= 206 pts above 29099"
+ * with no hint that 29099 was Monday's close. So: always show the reference's
+ * DATE and age next to its price, and whether the strategy re-verified it
+ * against data-service this morning.
+ *
+ * `urgent` = the decision is close enough that "not verified yet" is a problem
+ * rather than the normal overnight state (the strategy re-verifies from 08:00 ET).
+ */
+const RefStrip = ({ cond, urgent }) => {
+  if (!cond || (cond.refPrice == null && !cond.refDate)) return null;
+  const age = cond.refDate ? daysOldET(cond.refDate) : null;
+  const verified = cond.refVerified;          // null when the strategy doesn't report it
+  const stale = age != null && (age > 4 || age < 1);   // > a long weekend, or not a prior session
+  const bad = stale || (verified === false && urgent);
+  return (
+    <div className={`flex items-center gap-2 flex-wrap text-[10px] rounded px-2 py-1 border ${bad
+      ? 'bg-amber-900/30 border-amber-600/50' : 'bg-gray-800/40 border-gray-700/50'}`}>
+      <span className="text-gray-500 uppercase tracking-wide">Prior close</span>
+      <span className="font-mono font-semibold text-gray-200">{cond.refPrice ?? '—'}</span>
+      {cond.refDate ? (
+        <span className={bad ? 'text-amber-300' : 'text-gray-400'}>
+          {fmtRefDate(cond.refDate)}
+          {age != null ? <span className={bad ? 'text-amber-300/80' : 'text-gray-500'}> · {age}d ago</span> : null}
+        </span>
+      ) : <span className="text-amber-300">undated</span>}
+      {verified === true ? <span className="text-green-500/80">✓ re-verified today</span> : null}
+      {verified === false ? (
+        urgent
+          ? <span className="px-1.5 rounded border font-bold tracking-wide bg-amber-900/60 text-amber-200 border-amber-500/60">UNVERIFIED · WILL STAND DOWN</span>
+          : <span className="text-gray-500">verifies from 08:00 ET</span>
+      ) : null}
+      {cond.refError ? <span className="text-amber-300/90 truncate max-w-[40ch]" title={cond.refError}>{cond.refError}</span> : null}
     </div>
   );
 };
@@ -170,6 +221,15 @@ const StrategyRow = ({ s, liveSecs }) => {
         <div className="text-[13px] text-gray-300"><span className="font-semibold text-white">Unconditional</span> — fires at the Monday open</div>
       </>
     );
+  } else if (cond?.blocked) {
+    // Decision ran but refused the reference (see RefStrip) — say so instead of
+    // leaving the pre-open "known at 09:30 ET" copy up.
+    condBody = (
+      <>
+        <div className="text-gray-500 text-[10px] uppercase tracking-wide">{cond.label}</div>
+        <div className="text-[12px] text-rose-300 leading-tight">Stood down — {cond.blocked}</div>
+      </>
+    );
   } else if (cond) {
     const known = cond.value != null;
     condBody = (
@@ -184,7 +244,7 @@ const StrategyRow = ({ s, liveSecs }) => {
             </>
           ) : (
             <span className="text-gray-400 text-[12px]">
-              known at {it.decision?.label} · need ≥ {cond.thresholdPts ?? '—'} pts{cond.refPrice ? <> above <span className="font-mono text-gray-300">{cond.refPrice}</span></> : null}
+              known at {it.decision?.label} · need ≥ {cond.thresholdPts ?? '—'} pts{cond.refPrice ? <> above <span className="font-mono text-gray-300">{cond.refPrice}</span></> : null}{cond.refDate ? <span className="text-gray-500"> ({fmtRefDate(cond.refDate)})</span> : null}
             </span>
           )}
         </div>
@@ -234,6 +294,13 @@ const StrategyRow = ({ s, liveSecs }) => {
       {it.conditioner ? (
         <div className="px-3 pl-4 pb-1">
           <ConditionerStrip cond={it.conditioner} direction={it.direction} />
+        </div>
+      ) : null}
+
+      {/* Prior-session reference the gap is measured against (gap-up fade) */}
+      {cond?.refPrice != null || cond?.refDate ? (
+        <div className="px-3 pl-4 pb-1">
+          <RefStrip cond={cond} urgent={it.decision?.secondsTo != null && it.decision.secondsTo <= 5400} />
         </div>
       ) : null}
 
